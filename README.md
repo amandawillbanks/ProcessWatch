@@ -2,7 +2,7 @@
 
 **CSC 501 — Operating Systems | NC State University | Fall 2026**
 
-**Status: In development — initial eBPF process-execution monitoring functional.** The `/proc` monitor, integrated event collection, and comparative measurements are not yet implemented.
+**Status: In development — `/proc` snapshot monitoring implemented and initial eBPF process-execution monitoring previously tested.** Integrated event collection, security heuristics, automated tests, and comparative measurements remain unfinished.
 
 ## Project overview
 
@@ -12,7 +12,7 @@ ProcessWatch is a Linux command-line process monitoring and security-analysis pr
 
 ## Scope
 
-- **MVP (planned):** Enumerate numeric `/proc/<pid>` directories; show PID, PPID, command name, state, resident memory, UID/root status; optionally resolve executable path.
+- **Snapshot MVP (implemented):** Enumerate numeric `/proc/<pid>` directories and show PID, PPID, command name, state, resident memory (VmRSS in kB when available), and UID. Explicit root-status flags and executable-path resolution are not yet implemented.
 - **Security heuristics (planned):** Flag UID 0 and executable paths under `/tmp` as **review signals, not proof of compromise**.
 - **eBPF extension (initial implementation working):** Capture `sched_process_exec` tracepoint events using a kernel-side C program and a user-space `libbpf` loader. Currently prints PID messages through the kernel tracing buffer.
 - **Evaluation (planned):** Compare polling and eBPF on a controlled workload, measuring detection count, missed short-lived executions, CPU overhead, and memory overhead across repeated trials.
@@ -29,12 +29,20 @@ ProcessWatch is a Linux command-line process monitoring and security-analysis pr
 - Implemented `ebpf/loader.c` to load and attach the program with `libbpf`.
 - Compiled both components and observed ProcessWatch PID messages in the kernel trace buffer when test programs ran.
 
+### Completed — November 4, 2026
+
+- Added a C `/proc` snapshot reader in `src/process.c` and the `ProcessInfo` record in `include/process.h`.
+- Added `snapshot` command handling in `src/main.c`, displaying PID, PPID, UID, state, RSS (kB), and process name.
+- Replaced the placeholder Makefile with a build target for `build/processwatch` and a `clean` target.
+- Committed these changes to `main` (`dacc4ab`). Build and runtime behavior on the VCL host have not been independently re-verified as part of this documentation update.
+
 ### Next steps
 
-1. Implement the `/proc` snapshot reader and process metadata output.
-2. Replace debug-only `bpf_printk()` output with structured events consumed by the user-space application.
-3. Create reproducible Makefile targets and tests.
-4. Run controlled comparisons, record measurements, and discuss limitations.
+1. Test and validate the snapshot executable on the Linux VCL host, including process-exit and permission edge cases.
+2. Add review-only root UID and `/tmp` executable-path flags.
+3. Replace debug-only `bpf_printk()` output with structured events consumed by the user-space application.
+4. Add reproducible eBPF Makefile targets, automated tests, and controlled workloads.
+5. Run controlled comparisons, record measurements, and discuss limitations.
 
 ## Development environment
 
@@ -54,11 +62,13 @@ ProcessWatch is a Linux command-line process monitoring and security-analysis pr
 
 ```text
 Linux host (NOT Xinu guest)
-  /proc/<pid>/status, stat, exe ----> C snapshot reader (planned) --+
-                                                                     +--> terminal summary / flags (planned)
-  kernel sched_process_exec --> eBPF program --> libbpf loader -----+
+  /proc/<pid>/status --> C snapshot reader --> terminal process table (implemented)
+
+  kernel sched_process_exec --> eBPF program --> libbpf loader
                                   |
-                           bpf_printk trace messages (working)
+                           bpf_printk trace messages (previously tested)
+
+  Structured event collection, flags, and combined analysis: planned
 ```
 
 The working loader attaches the kernel program, but it does **not yet** collect structured events or combine them with the `/proc` reader. Xinu runs in QEMU for other CSC 501 work; Linux `/proc` and eBPF are not APIs inside the Xinu guest. Confirm the Linux-host choice with the instructor if required.
@@ -74,10 +84,22 @@ scripts/    benchmark.sh
 results/    measurements.csv
 docs/       proposal.md, architecture.md, evaluation_plan.md,
             setup.md, milestones.md, presentation.md, final_report.md
-Makefile    placeholder build targets
+Makefile    builds the `/proc` snapshot executable; eBPF build remains manual
 ```
 
 Some files are starter scaffolding and are not yet functional.
+
+## Build and run — `/proc` snapshot monitor
+
+From the repository root on Linux, with `gcc` and `make` installed:
+
+```bash
+make clean
+make
+./build/processwatch snapshot
+```
+
+The output is a point-in-time table with `PID`, `PPID`, `UID`, `STATE`, `RSS(KB)`, and `NAME`. Processes that exit during scanning or whose required status fields cannot be read are skipped. `RSS(KB)` displays `0` when `VmRSS` is absent, so zero is not necessarily a measured resident-memory value. The snapshot mode does not yet flag root processes or resolve executable paths. `make clean` removes the generated `build/` directory, including any manually compiled eBPF artifacts.
 
 ## Build and run — initial eBPF monitor
 
@@ -131,7 +153,7 @@ In terminal 3:
 
 Look for `ProcessWatch: process executed, PID=...` in the trace output. Press **Ctrl+C** to stop the trace reader and loader. The trace buffer can contain messages from other tracing activity on the host.
 
-**Current limitation:** The loader attaches the eBPF program but does not display process events itself; the kernel program uses `bpf_printk()` for debugging output. The Makefile is still a placeholder.
+**Current limitation:** The loader attaches the eBPF program but does not display process events itself; the kernel program uses `bpf_printk()` for debugging output. The Makefile currently builds only the `/proc` snapshot executable; the eBPF build commands remain manual.
 
 ## Evaluation plan
 
