@@ -1,5 +1,17 @@
+
+CC = gcc
+CFLAGS = -Wall -Wextra -O2 -std=c11 -Iinclude
+
+TARGET = build/processwatch
+SOURCES = src/main.c src/process.c
+
 .PHONY: all clean
-all:
-	@echo "Project skeleton only: build targets not implemented yet"
+
+all: $(TARGET)
+
+$(TARGET): $(SOURCES) include/process.h
+	mkdir -p build
+	$(CC) $(CFLAGS) $(SOURCES) -o $(TARGET)
+
 clean:
 	rm -rf build
