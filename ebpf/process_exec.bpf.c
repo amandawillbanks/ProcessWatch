@@ -2,6 +2,7 @@
 #include "vmlinux.h"
 #include <bpf/bpf_helpers.h>
 #include "process_event.h"
+#include <bpf/bpf_core_read.h>
 
 char LICENSE[] SEC("license") = "GPL";
 
@@ -28,7 +29,10 @@ int trace_process_exec(void *ctx)
     __u64 pid_tgid = bpf_get_current_pid_tgid();
 
     event->pid = pid_tgid >> 32;
-    event->ppid = 0;
+    /* Get the current task and its parent process ID. */
+    struct task_struct *task =
+        (struct task_struct *)bpf_get_current_task();
+    event->ppid = BPF_CORE_READ(task, real_parent, tgid);
     event->uid = (__u32)bpf_get_current_uid_gid();
     event->reserved = 0;
     event->timestamp_ns = bpf_ktime_get_ns();

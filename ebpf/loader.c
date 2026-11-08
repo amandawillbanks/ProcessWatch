@@ -27,8 +27,9 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
 
     const struct process_event *event = data;
 
-    printf("EXEC PID=%u UID=%u COMM=%s TIME=%llu\n",
+    printf("EXEC PID=%u PPID=%u UID=%u COMM=%s TIME=%llu\n",
            event->pid,
+           event->ppid,
            event->uid,
            event->comm,
            event->timestamp_ns);
