@@ -104,32 +104,3 @@ ebpf_hits=$(LC_ALL=C comm -12 "$run_dir/expected.sorted" "$run_dir/ebpf.sorted" 
     echo "Note: detection rates are for this workload and trial only."
     echo "Note: this script does not measure CPU or memory overhead."
 } | tee "$summary_file"
- 2>/dev/null || true
-wait "$loader_pid" 2>/dev/null || true
-loader_pid=""
-
-LC_ALL=C sort -u "$pid_file" > "$run_dir/expected.sorted"
-LC_ALL=C sort -u "$snapshot_file" > "$run_dir/snapshot.sorted"
-awk '/^EXEC PID=/ {
-    split($2, field, "=");
-    if (field[2] ~ /^[0-9]+$/) print field[2]
-}' "$ebpf_file" | LC_ALL=C sort -u > "$run_dir/ebpf.sorted"
-
-expected=$(wc -l < "$run_dir/expected.sorted")
-snapshot_hits=$(LC_ALL=C comm -12 "$run_dir/expected.sorted" "$run_dir/snapshot.sorted" | wc -l)
-ebpf_hits=$(LC_ALL=C comm -12 "$run_dir/expected.sorted" "$run_dir/ebpf.sorted" | wc -l)
-
-{
-    echo "ProcessWatch benchmark"
-    echo "Workload executions: $expected"
-    echo "Requested process lifetime (seconds): $duration"
-    echo "Requested snapshot interval (seconds): $interval"
-    echo "Snapshot detections: $snapshot_hits / $expected"
-    echo "eBPF detections: $ebpf_hits / $expected"
-    awk -v s="$snapshot_hits" -v b="$ebpf_hits" -v n="$expected" 'BEGIN {
-        printf "Snapshot detection rate: %.1f%%\n", 100*s/n
-        printf "eBPF detection rate: %.1f%%\n", 100*b/n
-    }'
-    echo "Note: detection rates are for this workload and trial only."
-    echo "Note: this script does not measure CPU or memory overhead."
-} | tee "$summary_file"
