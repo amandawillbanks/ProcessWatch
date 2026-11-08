@@ -37,7 +37,7 @@ cleanup() {
     fi
     if [[ -n "$loader_pid" ]]; then
         # sudo may be the parent of the actual loader process.
-        sudo pkill -INT -f '^\\./build/processwatch-loader
+        sudo pkill -INT -f '^\./build/processwatch-loader$' 2>/dev/null || true
         wait "$loader_pid" 2>/dev/null || true
     fi
 }
@@ -76,7 +76,7 @@ sampler_pid=""
 
 # Stop loader and wait for the ring-buffer output to flush.
 # pkill targets the executable rather than relying on sudo's PID semantics.
-sudo pkill -INT -f '^\\./build/processwatch-loader
+        sudo pkill -INT -f '^\./build/processwatch-loader$' 2>/dev/null || true
 wait "$loader_pid" 2>/dev/null || true
 loader_pid=""
 
