@@ -2,176 +2,142 @@
 
 **CSC 501 — Operating Systems | NC State University | Fall 2026**
 
-**Status: In development — `/proc` snapshot monitoring implemented and initial eBPF process-execution monitoring previously tested.** Integrated event collection, security heuristics, automated tests, and comparative measurements remain unfinished.
+**Status:** Core Linux `/proc` snapshot monitor, security flags, eBPF execution-event monitor, and initial detection benchmark implemented. Repeated experiments, CPU/memory overhead measurements, and final report remain outstanding.
 
-## Project overview
+## Overview
 
-ProcessWatch is a Linux command-line process monitoring and security-analysis project written primarily in C. It aims to compare periodic snapshots of running processes from Linux `/proc` with event-driven eBPF process-execution monitoring.
+ProcessWatch is a Linux process-monitoring project written primarily in C. It compares a **point-in-time** `/proc` process listing with **event-driven** eBPF monitoring using the kernel `sched_process_exec` tracepoint.
 
-**Research question:** Compared with periodic `/proc` polling, can eBPF-based process-execution monitoring detect short-lived process executions more reliably with acceptable monitoring overhead?
+**Research question:** How well does event-driven eBPF monitoring capture short-lived process executions compared with periodic `/proc` snapshots, and what monitoring overhead does each approach incur?
 
-## Scope
+The tools are separate executables; they are not yet integrated into a single combined interface.
 
-- **Snapshot MVP (implemented):** Enumerate numeric `/proc/<pid>` directories and show PID, PPID, command name, state, resident memory (VmRSS in kB when available), and UID. Explicit root-status flags and executable-path resolution are not yet implemented.
-- **Security heuristics (planned):** Flag UID 0 and executable paths under `/tmp` as **review signals, not proof of compromise**.
-- **eBPF extension (initial implementation working):** Capture `sched_process_exec` tracepoint events using a kernel-side C program and a user-space `libbpf` loader. Currently prints PID messages through the kernel tracing buffer.
-- **Evaluation (planned):** Compare polling and eBPF on a controlled workload, measuring detection count, missed short-lived executions, CPU overhead, and memory overhead across repeated trials.
-- **Stretch goals:** CPU usage, event timestamps, filters, CSV export.
+## Implemented features
 
-## Progress
+- **Snapshot:** `./build/processwatch snapshot` enumerates numeric `/proc/<pid>` directories, reads `/proc/<pid>/status`, and displays PID, PPID, UID, state, resident memory in kB (when available), and process name.
+- **Security review flags:** `ROOT` marks UID 0; `TMP_EXEC` marks executables resolved under `/tmp/`. These are **review signals, not evidence of malicious activity**. Executable paths may be unavailable due to permissions or process exit.
+- **eBPF monitor:** `ebpf/process_exec.bpf.c` hooks `sched_process_exec`, obtains PID, parent PID, UID, command name and monotonic kernel timestamp, and submits structured records to a BPF ring buffer. `ebpf/loader.c` reads and prints them.
+- **Controlled workload:** `tests/workload.sh` launches a specified number of short-lived `/bin/sleep` processes and records their PIDs.
+- **Benchmark:** `scripts/benchmark.sh` compares known workload PIDs with the PIDs seen by periodic snapshots and eBPF exec events, saving logs and a summary under `results/benchmark-*/`.
 
-### Completed — October 29, 2026
+## Environment and dependencies
 
-- Set up Ubuntu 24.04 LTS on NC State VCL and verified kernel BPF support, BTF, and sudo access.
-- Installed and verified `bpftrace`, `bpftool`, Clang, and `libbpf` development tools.
-- Captured `execve` events with a `bpftrace` smoke test.
-- Implemented `ebpf/process_exec.bpf.c` with a `sched_process_exec` tracepoint handler.
-- Implemented `ebpf/loader.c` to load and attach the program with `libbpf`.
-- Compiled both components and observed ProcessWatch PID messages in the kernel trace buffer when test programs ran.
+Developed on NC State VCL Ubuntu 24.04 LTS (x86_64; previously observed kernel 6.8.0-147-generic) using GCC, Make, Clang 18, bpftool, and libbpf. Building and attaching eBPF requires a compatible Linux kernel, BTF data, and elevated permissions. Linux `/proc` and eBPF run on the **Linux host**, not inside a Xinu guest.
 
-### Completed — November 4, 2026
-
-- Added a C `/proc` snapshot reader in `src/process.c` and the `ProcessInfo` record in `include/process.h`.
-- Added `snapshot` command handling in `src/main.c`, displaying PID, PPID, UID, state, RSS (kB), and process name.
-- Replaced the placeholder Makefile with a build target for `build/processwatch` and a `clean` target.
-- Committed these changes to `main` (`dacc4ab`). Build and runtime behavior on the VCL host have not been independently re-verified as part of this documentation update.
-
-### Next steps
-
-1. Test and validate the snapshot executable on the Linux VCL host, including process-exit and permission edge cases.
-2. Add review-only root UID and `/tmp` executable-path flags.
-3. Replace debug-only `bpf_printk()` output with structured events consumed by the user-space application.
-4. Add reproducible eBPF Makefile targets, automated tests, and controlled workloads.
-5. Run controlled comparisons, record measurements, and discuss limitations.
-
-## Development environment
-
-| Component | Verified environment |
-|---|---|
-| Operating system | Ubuntu 24.04 LTS (NC State VCL) |
-| Kernel | 6.8.0-147-generic |
-| Architecture | x86_64 |
-| Language | C |
-| bpftrace | 0.20.2 |
-| bpftool | 7.4.0 |
-| Clang | 18.1.3 |
-| eBPF library | libbpf |
-| Editor / connection | VS Code Remote SSH |
-
-## Architecture
-
-```text
-Linux host (NOT Xinu guest)
-  /proc/<pid>/status --> C snapshot reader --> terminal process table (implemented)
-
-  kernel sched_process_exec --> eBPF program --> libbpf loader
-                                  |
-                           bpf_printk trace messages (previously tested)
-
-  Structured event collection, flags, and combined analysis: planned
-```
-
-The working loader attaches the kernel program, but it does **not yet** collect structured events or combine them with the `/proc` reader. Xinu runs in QEMU for other CSC 501 work; Linux `/proc` and eBPF are not APIs inside the Xinu guest. Confirm the Linux-host choice with the instructor if required.
-
-## Repository layout
-
-```text
-src/        main.c, process.c, security.c
-include/    process.h, security.h
-ebpf/       process_exec.bpf.c, loader.c
-tests/      test_process.c, workload.sh
-scripts/    benchmark.sh
-results/    measurements.csv
-docs/       proposal.md, architecture.md, evaluation_plan.md,
-            setup.md, milestones.md, presentation.md, final_report.md
-Makefile    builds the `/proc` snapshot executable; eBPF build remains manual
-```
-
-Some files are starter scaffolding and are not yet functional.
-
-## Build and run — `/proc` snapshot monitor
-
-From the repository root on Linux, with `gcc` and `make` installed:
+Example dependency installation on Ubuntu:
 
 ```bash
-make clean
+sudo apt update
+sudo apt install -y build-essential clang llvm bpftool libbpf-dev libelf-dev zlib1g-dev
+```
+
+## Build
+
+From the repository root:
+
+```bash
 make
+sudo bpftool btf dump file /sys/kernel/btf/vmlinux format c > ebpf/vmlinux.h
+mkdir -p build
+clang -O2 -g -target bpf -D__TARGET_ARCH_x86 \
+  -Iebpf -I/usr/include/x86_64-linux-gnu \
+  -c ebpf/process_exec.bpf.c -o build/process_exec.bpf.o
+gcc -Wall -Wextra -O2 -Iebpf \
+  ebpf/loader.c -o build/processwatch-loader -lbpf -lelf -lz
+```
+
+The Makefile currently builds only `build/processwatch`. The eBPF compilation steps remain manual. The generated `ebpf/vmlinux.h` is machine/kernel-specific; regenerate it as appropriate for the target environment. **`make clean` removes the entire `build/` directory**, including manually built eBPF binaries.
+
+## Run
+
+### /proc snapshot
+
+```bash
 ./build/processwatch snapshot
 ```
 
-The output is a point-in-time table with `PID`, `PPID`, `UID`, `STATE`, `RSS(KB)`, and `NAME`. Processes that exit during scanning or whose required status fields cannot be read are skipped. `RSS(KB)` displays `0` when `VmRSS` is absent, so zero is not necessarily a measured resident-memory value. The snapshot mode does not yet flag root processes or resolve executable paths. `make clean` removes the generated `build/` directory, including any manually compiled eBPF artifacts.
+Output columns: `PID PPID UID STATE RSS(KB) NAME FLAGS`. Processes that exit during enumeration or cannot be read may be skipped. `RSS(KB)=0` can mean that `VmRSS` was unavailable, not necessarily that the process used no memory.
 
-## Build and run — initial eBPF monitor
-
-Run these commands from the repository root on a compatible Linux host. They require installed `bpftool`, Clang with BPF target support, `gcc`, `libbpf-dev`, `libelf-dev`, and `zlib1g-dev`. The generated `ebpf/vmlinux.h` and compiled `build/` files are ignored by Git.
-
-### 1. Generate kernel type definitions
-
-```bash
-sudo bpftool btf dump file /sys/kernel/btf/vmlinux format c > ebpf/vmlinux.h
-```
-
-### 2. Compile the kernel-side eBPF program
-
-```bash
-mkdir -p build
-clang -O2 -g -target bpf -D__TARGET_ARCH_x86 \
-  -I./ebpf -I/usr/include/x86_64-linux-gnu \
-  -c ebpf/process_exec.bpf.c \
-  -o build/process_exec.bpf.o
-```
-
-### 3. Compile the user-space loader
-
-```bash
-gcc -Wall -Wextra -O2 \
-  ebpf/loader.c \
-  -o build/processwatch-loader \
-  -lbpf -lelf -lz
-```
-
-### 4. Run and observe
-
-In terminal 1:
+### Live eBPF execution monitoring
 
 ```bash
 sudo ./build/processwatch-loader
 ```
 
-In terminal 2:
+In another terminal, launch a process such as `/bin/sleep 2`. The loader displays entries similar to:
 
-```bash
-sudo cat /sys/kernel/tracing/trace_pipe
+```text
+EXEC PID=1125264 PPID=1117695 UID=510249 COMM=sleep TIME=895041159715633
 ```
 
-In terminal 3:
+`TIME` is a kernel monotonic timestamp in nanoseconds, **not a wall-clock date/time**. Stop with Ctrl+C. A `bash` process that `exec`s `sleep` can produce two execution events with the same PID; an `exec` replaces the process image without changing the PID.
+
+### Controlled detection benchmark
 
 ```bash
-/bin/ls
-/bin/echo "Testing ProcessWatch"
+bash -n scripts/benchmark.sh
+bash scripts/benchmark.sh 20 0.05 0.1
 ```
 
-Look for `ProcessWatch: process executed, PID=...` in the trace output. Press **Ctrl+C** to stop the trace reader and loader. The trace buffer can contain messages from other tracing activity on the host.
+Arguments: `[number_of_processes] [sleep_duration_seconds] [snapshot_interval_seconds]`. The example runs 20 sequential `sleep` executions, requests a 50 ms sleep for each, and requests a 100 ms snapshot interval. The benchmark requires `sudo` to attach the eBPF program and assumes the two monitor binaries are already built.
 
-**Current limitation:** The loader attaches the eBPF program but does not display process events itself; the kernel program uses `bpf_printk()` for debugging output. The Makefile currently builds only the `/proc` snapshot executable; the eBPF build commands remain manual.
+Results are stored in a unique `results/benchmark-*/` directory, including `summary.txt`, `ebpf.log`, `workload_pids.txt`, and intermediate PID sets. The benchmark matches **known workload PIDs** against the observed PID sets; unrelated background processes are excluded from the final detection counts.
 
-## Evaluation plan
+**Observed initial trial (November 8, 2026):**
 
-Use a controlled workload to compare periodic `/proc` snapshots with eBPF execution events. Planned measurements include total executions generated, detections and missed short-lived executions, CPU overhead, memory overhead, and variation across repeated trials. **No comparative results have been measured yet.**
+| Metric | /proc snapshots | eBPF |
+|---|---:|---:|
+| Workload executions | 20 | 20 |
+| Detected workload PIDs | 8 | 20 |
+| Detection rate | 40.0% | 100.0% |
 
-## Operating systems relevance
+The observed run used `bash scripts/benchmark.sh 20 0.05 0.1` and saved its output under `results/benchmark-35LW8ig9/` on the VCL host. That run printed a trailing shell syntax error after the detection summary due to duplicated script content. The duplicate tail was subsequently removed in commit `ad82c37`; **a clean rerun after that fix has not yet been confirmed**.
 
-ProcessWatch explores process management, the `/proc` interface, kernel versus user space, kernel execution tracepoints, and the overhead of observing operating-system behavior. It relates to CPU virtualization and scheduling but does not itself implement a scheduler.
+These figures describe **one preliminary trial**, not a statistically supported general performance claim. Requested sleep duration and snapshot interval are not exact measured timings. CPU and memory overhead are **not yet measured**.
+
+## Benchmark methodology and limitations
+
+The workload records each child PID as ground truth. Snapshot sampling runs `./build/processwatch snapshot` repeatedly and extracts its PID column. The eBPF loader captures execution events via the kernel tracepoint. The benchmark intersects each observed PID set with the known workload PID set.
+
+Important limitations:
+- Snapshot detection depends on the process lifetime, sampling interval, snapshot execution time, and scheduler timing.
+- eBPF monitors **exec events**, whereas `/proc` lists **currently existing processes**; these are different observation semantics.
+- Ring-buffer events may be dropped under heavy load; 100% detection in one trial does not guarantee lossless capture.
+- The current benchmark does not measure CPU or memory overhead, monitor actual sampling cadence, or run repeated trials automatically.
+- The snapshot executable includes process enumeration and status parsing overhead; the eBPF executable includes event delivery and terminal output overhead. Any overhead comparison should account for this.
+- The benchmark is intended for controlled, low-load experiments. Review cleanup behavior before running concurrently with other instances of the loader.
+
+## Repository layout
+
+```text
+src/          C CLI, /proc reader, security checks
+include/      C headers
+ebpf/         kernel-side BPF program, shared event structure, userspace loader
+tests/        controlled workload and test scaffolding
+scripts/      benchmark runner
+results/      generated benchmark outputs (local)
+docs/         proposal, architecture, evaluation plan, report drafts
+Makefile      snapshot monitor build
+```
+
+## Progress and next steps
+
+1. **Complete:** /proc snapshot with root and /tmp review flags.
+2. **Complete:** structured eBPF ring-buffer execution events, including verified PPID tracking.
+3. **Complete:** initial 20-process detection benchmark; clean-script rerun still needed.
+4. **Next:** repeat controlled trials with multiple process lifetimes and polling intervals.
+5. **Next:** implement and record CPU and memory overhead measurements; validate benchmark reliability.
+6. **Next:** finalize build reproducibility, documentation, analysis, and CSC 501 report.
 
 ## Course deliverables
 
-- **Presentation window:** November 11, 16, and 18, 2026; 5 minutes for solo projects. Course notice says EOL students do not present; confirm section requirements.
-- **Final report:** December 1, 2026 at 11:59 PM, Gradescope. Solo: 3+ single-spaced pages, 10-point font, excluding contribution table and AI statement.
-- **Code:** GitHub repository with reproducible build/run instructions.
-- **Report sections:** Abstract; motivation and idea; technical detail; evaluation (setup, baseline, measured numbers); contribution table; AI-use statement.
+- **Presentation dates previously noted:** November 11, 16, and 18, 2026; verify requirements for the enrolled section, especially EOL/online students.
+- **Final report deadline previously noted:** December 1, 2026 at 11:59 PM via Gradescope.
+- **Solo report requirement previously noted:** at least three single-spaced pages in 10-point font, excluding contribution table and AI statement. Verify against the current assignment.
+- Suggested sections: abstract; motivation; implementation and OS concepts; experimental methodology; measured results and limitations; contribution table; AI assistance statement.
 
-## AI assistance and academic integrity
+## AI assistance disclosure
 
-AI assistance was used for implementation guidance, C/eBPF examples, compilation instructions, troubleshooting, and documentation drafting. The author must review, understand, and be able to explain all submitted code and text. Actual AI use will be documented in the final report in accordance with course requirements.
+AI was used to assist with C/eBPF implementation, Bash benchmark scripts, debugging, and README drafting. The student should review, test, and understand all code and report statements. The final report should disclose actual AI assistance in accordance with course requirements.
 
-See [proposal](docs/proposal.md), [architecture](docs/architecture.md), [evaluation plan](docs/evaluation_plan.md), and [milestones](docs/milestones.md).
+Additional documents: [proposal](docs/proposal.md), [architecture](docs/architecture.md), [evaluation plan](docs/evaluation_plan.md), [milestones](docs/milestones.md).
