@@ -5,5 +5,6 @@
 #include "process.h"
 
 int is_root_process(const ProcessInfo *process);
+int is_tmp_executable(const ProcessInfo *process);
 
 #endif

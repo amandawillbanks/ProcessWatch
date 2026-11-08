@@ -1,4 +1,5 @@
 
+#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,7 +8,8 @@
 #include <errno.h>
 #include <limits.h>
 #include "process.h" 
-#include "security.h"       
+#include "security.h"  
+#include <unistd.h>     
 
 /* Check whether a directory name contains only digits. */
 static int is_pid_directory(const char *name)
@@ -23,7 +25,38 @@ static int is_pid_directory(const char *name)
     return 1;
 }
 
+
+/*
+ * Resolve the executable path for a process.
+ * Returns 0 on success and -1 on failure.
+ */
+static int read_executable_path(pid_t pid, ProcessInfo *info)
+{
+    char link_path[64];
+
+    snprintf(link_path, sizeof(link_path),
+             "/proc/%ld/exe", (long)pid);
+
+    ssize_t length = readlink(
+        link_path,
+        info->exe_path,
+        sizeof(info->exe_path) - 1
+    );
+
+    if (length < 0 ||
+        (size_t)length == sizeof(info->exe_path) - 1) {
+        info->exe_path[0] = '\0';
+        info->exe_path_valid = 0;
+        return -1;
+    }
+
+    info->exe_path[length] = '\0';
+    info->exe_path_valid = 1;
+
+    return 0;
+}
 /* Read process metadata from /proc/<pid>/status. */
+
 int read_process(pid_t pid, ProcessInfo *info)
 {
     if (!info || pid <= 0)
@@ -91,6 +124,10 @@ int read_process(pid_t pid, ProcessInfo *info)
     if (!got_name || !got_ppid || !got_uid || !got_state)
         return -1;
 
+    /* Attempt to resolve the executable path. */
+    read_executable_path(pid, info);
+   
+
     return 0;
 }
 
@@ -129,9 +166,24 @@ void list_processes(void)
 
         if (read_process((pid_t)number, &info) == 0) {
 
-            const char *flag = is_root_process(&info)
-                            ? "ROOT"
-                            : "-";
+            
+            char flags[32] = "";
+
+            if (is_root_process(&info)) {
+                strcat(flags, "ROOT");
+            }
+
+            if (is_tmp_executable(&info)) {
+                if (flags[0] != '\0') {
+                    strcat(flags, ",");
+                }
+                strcat(flags, "TMP_EXEC");
+            }
+
+            if (flags[0] == '\0') {
+                strcpy(flags, "-");
+            }
+
 
             printf("%-8ld %-8ld %-8lu %-6c %-12lu %-25s %s\n",
                 (long)info.pid,
@@ -140,7 +192,7 @@ void list_processes(void)
                 info.state,
                 info.rss_kb,
                 info.name,
-                flag);
+                flags);
         }
     }
 
