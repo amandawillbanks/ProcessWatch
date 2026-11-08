@@ -80,16 +80,16 @@ sampler_pid=""
 wait "$loader_pid" 2>/dev/null || true
 loader_pid=""
 
-sort -nu "$pid_file" > "$run_dir/expected.sorted"
-sort -nu "$snapshot_file" > "$run_dir/snapshot.sorted"
+LC_ALL=C sort -u "$pid_file" > "$run_dir/expected.sorted"
+LC_ALL=C sort -u "$snapshot_file" > "$run_dir/snapshot.sorted"
 awk '/^EXEC PID=/ {
     split($2, field, "=");
     if (field[2] ~ /^[0-9]+$/) print field[2]
-}' "$ebpf_file" | sort -nu > "$run_dir/ebpf.sorted"
+}' "$ebpf_file" | LC_ALL=C sort -u > "$run_dir/ebpf.sorted"
 
 expected=$(wc -l < "$run_dir/expected.sorted")
-snapshot_hits=$(comm -12 "$run_dir/expected.sorted" "$run_dir/snapshot.sorted" | wc -l)
-ebpf_hits=$(comm -12 "$run_dir/expected.sorted" "$run_dir/ebpf.sorted" | wc -l)
+snapshot_hits=$(LC_ALL=C comm -12 "$run_dir/expected.sorted" "$run_dir/snapshot.sorted" | wc -l)
+ebpf_hits=$(LC_ALL=C comm -12 "$run_dir/expected.sorted" "$run_dir/ebpf.sorted" | wc -l)
 
 {
     echo "ProcessWatch benchmark"
@@ -148,16 +148,16 @@ sudo pkill -INT -x processwatch-loader 2>/dev/null || true
 wait "$loader_pid" 2>/dev/null || true
 loader_pid=""
 
-sort -nu "$pid_file" > "$run_dir/expected.sorted"
-sort -nu "$snapshot_file" > "$run_dir/snapshot.sorted"
+LC_ALL=C sort -u "$pid_file" > "$run_dir/expected.sorted"
+LC_ALL=C sort -u "$snapshot_file" > "$run_dir/snapshot.sorted"
 awk '/^EXEC PID=/ {
     split($2, field, "=");
     if (field[2] ~ /^[0-9]+$/) print field[2]
-}' "$ebpf_file" | sort -nu > "$run_dir/ebpf.sorted"
+}' "$ebpf_file" | LC_ALL=C sort -u > "$run_dir/ebpf.sorted"
 
 expected=$(wc -l < "$run_dir/expected.sorted")
-snapshot_hits=$(comm -12 "$run_dir/expected.sorted" "$run_dir/snapshot.sorted" | wc -l)
-ebpf_hits=$(comm -12 "$run_dir/expected.sorted" "$run_dir/ebpf.sorted" | wc -l)
+snapshot_hits=$(LC_ALL=C comm -12 "$run_dir/expected.sorted" "$run_dir/snapshot.sorted" | wc -l)
+ebpf_hits=$(LC_ALL=C comm -12 "$run_dir/expected.sorted" "$run_dir/ebpf.sorted" | wc -l)
 
 {
     echo "ProcessWatch benchmark"
@@ -177,16 +177,16 @@ ebpf_hits=$(comm -12 "$run_dir/expected.sorted" "$run_dir/ebpf.sorted" | wc -l)
 wait "$loader_pid" 2>/dev/null || true
 loader_pid=""
 
-sort -nu "$pid_file" > "$run_dir/expected.sorted"
-sort -nu "$snapshot_file" > "$run_dir/snapshot.sorted"
+LC_ALL=C sort -u "$pid_file" > "$run_dir/expected.sorted"
+LC_ALL=C sort -u "$snapshot_file" > "$run_dir/snapshot.sorted"
 awk '/^EXEC PID=/ {
     split($2, field, "=");
     if (field[2] ~ /^[0-9]+$/) print field[2]
-}' "$ebpf_file" | sort -nu > "$run_dir/ebpf.sorted"
+}' "$ebpf_file" | LC_ALL=C sort -u > "$run_dir/ebpf.sorted"
 
 expected=$(wc -l < "$run_dir/expected.sorted")
-snapshot_hits=$(comm -12 "$run_dir/expected.sorted" "$run_dir/snapshot.sorted" | wc -l)
-ebpf_hits=$(comm -12 "$run_dir/expected.sorted" "$run_dir/ebpf.sorted" | wc -l)
+snapshot_hits=$(LC_ALL=C comm -12 "$run_dir/expected.sorted" "$run_dir/snapshot.sorted" | wc -l)
+ebpf_hits=$(LC_ALL=C comm -12 "$run_dir/expected.sorted" "$run_dir/ebpf.sorted" | wc -l)
 
 {
     echo "ProcessWatch benchmark"
@@ -245,16 +245,16 @@ sudo pkill -INT -x processwatch-loader 2>/dev/null || true
 wait "$loader_pid" 2>/dev/null || true
 loader_pid=""
 
-sort -nu "$pid_file" > "$run_dir/expected.sorted"
-sort -nu "$snapshot_file" > "$run_dir/snapshot.sorted"
+LC_ALL=C sort -u "$pid_file" > "$run_dir/expected.sorted"
+LC_ALL=C sort -u "$snapshot_file" > "$run_dir/snapshot.sorted"
 awk '/^EXEC PID=/ {
     split($2, field, "=");
     if (field[2] ~ /^[0-9]+$/) print field[2]
-}' "$ebpf_file" | sort -nu > "$run_dir/ebpf.sorted"
+}' "$ebpf_file" | LC_ALL=C sort -u > "$run_dir/ebpf.sorted"
 
 expected=$(wc -l < "$run_dir/expected.sorted")
-snapshot_hits=$(comm -12 "$run_dir/expected.sorted" "$run_dir/snapshot.sorted" | wc -l)
-ebpf_hits=$(comm -12 "$run_dir/expected.sorted" "$run_dir/ebpf.sorted" | wc -l)
+snapshot_hits=$(LC_ALL=C comm -12 "$run_dir/expected.sorted" "$run_dir/snapshot.sorted" | wc -l)
+ebpf_hits=$(LC_ALL=C comm -12 "$run_dir/expected.sorted" "$run_dir/ebpf.sorted" | wc -l)
 
 {
     echo "ProcessWatch benchmark"
