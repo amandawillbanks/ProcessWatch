@@ -76,7 +76,8 @@ sampler_pid=""
 
 # Stop loader and wait for the ring-buffer output to flush.
 # pkill targets the executable rather than relying on sudo's PID semantics.
-sudo pkill -INT -f '^\./build/processwatch-loader 2>/dev/null || true
+sudo pkill -INT -f '^\./build/processwatch-loader$' 2>/dev/null || true
+wait "$loader_pid" 2>/dev/null || true
 loader_pid=""
 
 LC_ALL=C sort -u "$pid_file" > "$run_dir/expected.sorted"
