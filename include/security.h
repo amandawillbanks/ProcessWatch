@@ -1,4 +1,9 @@
+
 #ifndef PROCESSWATCH_SECURITY_H
 #define PROCESSWATCH_SECURITY_H
-/* Security analysis declarations go here. */
+
+#include "process.h"
+
+int is_root_process(const ProcessInfo *process);
+
 #endif

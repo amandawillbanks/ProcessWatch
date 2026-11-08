@@ -6,8 +6,8 @@
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
-
-#include "process.h"
+#include "process.h" 
+#include "security.h"       
 
 /* Check whether a directory name contains only digits. */
 static int is_pid_directory(const char *name)
@@ -103,10 +103,9 @@ void list_processes(void)
         perror("Unable to open /proc");
         return;
     }
-
-    printf("%-8s %-8s %-8s %-6s %-12s %s\n",
-           "PID", "PPID", "UID",
-           "STATE", "RSS(KB)", "NAME");
+    printf("%-8s %-8s %-8s %-6s %-12s %-25s %s\n",
+        "PID", "PPID", "UID",
+        "STATE", "RSS(KB)", "NAME", "FLAGS");
 
     printf("------------------------------------------------"
            "----------------\n");
@@ -129,13 +128,19 @@ void list_processes(void)
         ProcessInfo info;
 
         if (read_process((pid_t)number, &info) == 0) {
-            printf("%-8ld %-8ld %-8lu %-6c %-12lu %s\n",
-                   (long)info.pid,
-                   (long)info.ppid,
-                   (unsigned long)info.uid,
-                   info.state,
-                   info.rss_kb,
-                   info.name);
+
+            const char *flag = is_root_process(&info)
+                            ? "ROOT"
+                            : "-";
+
+            printf("%-8ld %-8ld %-8lu %-6c %-12lu %-25s %s\n",
+                (long)info.pid,
+                (long)info.ppid,
+                (unsigned long)info.uid,
+                info.state,
+                info.rss_kb,
+                info.name,
+                flag);
         }
     }
 
