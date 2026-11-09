@@ -7,3 +7,4 @@ build/
 .DS_Store
 ebpf/vmlinux.h
 ebpf/vmlinux.h
+results/benchmark-*/
