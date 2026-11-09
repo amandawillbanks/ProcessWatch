@@ -93,7 +93,7 @@ Results are stored in a unique `results/benchmark-*/` directory, including `summ
 
 The observed run used `bash scripts/benchmark.sh 20 0.05 0.1` and saved its output under `results/benchmark-35LW8ig9/` on the VCL host. That run printed a trailing shell syntax error after the detection summary due to duplicated script content. The duplicate tail was subsequently removed in commit `ad82c37`; **a clean rerun after that fix has not yet been confirmed**.
 
-These figures describe **one preliminary trial**, not a statistically supported general performance claim. Requested sleep duration and snapshot interval are not exact measured timings. CPU and memory overhead are **not yet measured**.
+**Additional observed trial (November 8, 2026):** Running `bash scripts/benchmark.sh 100 0.05 0.1` produced 42/100 (42.0%) snapshot detections and 100/100 (100.0%) eBPF detections. The VCL host saved output under `results/benchmark-dpLxymCR/`. The terminal output shared for this run ended with a truncated note, so a complete clean exit was not independently confirmed.\n\nThese figures describe **one preliminary trial**, not a statistically supported general performance claim. Requested sleep duration and snapshot interval are not exact measured timings. CPU and memory overhead are **not yet measured**.
 
 ## Benchmark methodology and limitations
 
