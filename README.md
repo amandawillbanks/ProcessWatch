@@ -2,7 +2,7 @@
 
 **CSC 501 — Operating Systems | NC State University | Fall 2026**
 
-**Status:** Core Linux `/proc` snapshot monitor, security flags, eBPF execution-event monitor, and initial detection benchmark implemented. Repeated experiments, CPU/memory overhead measurements, and final report remain outstanding.
+**Status:** Core Linux `/proc` snapshot monitor, security flags, eBPF execution-event monitor, and four successful detection benchmark trials completed. Repeated experiments, CPU/memory overhead measurements, and final report remain outstanding.
 
 ## Overview
 
@@ -83,17 +83,18 @@ Arguments: `[number_of_processes] [sleep_duration_seconds] [snapshot_interval_se
 
 Results are stored in a unique `results/benchmark-*/` directory, including `summary.txt`, `ebpf.log`, `workload_pids.txt`, and intermediate PID sets. The benchmark matches **known workload PIDs** against the observed PID sets; unrelated background processes are excluded from the final detection counts.
 
-**Observed initial trial (November 8, 2026):**
+**Observed detection experiments (November 8, 2026):**
 
-| Metric | /proc snapshots | eBPF |
-|---|---:|---:|
-| Workload executions | 20 | 20 |
-| Detected workload PIDs | 8 | 20 |
-| Detection rate | 40.0% | 100.0% |
+| Trial | Workload count | Requested sleep | Requested snapshot interval | /proc detected | eBPF detected | Local result directory |
+|---|---:|---:|---:|---:|---:|---|
+| 1 | 20 | 0.05 s | 0.1 s | 8/20 (40%) | 20/20 (100%) | `benchmark-FWQxdoXr` |
+| 2 | 100 | 0.05 s | 0.1 s | 42/100 (42%) | 100/100 (100%) | `benchmark-dpLxymCR` |
+| 3 | 100 | 0.2 s | 0.1 s | 100/100 (100%) | 100/100 (100%) | `benchmark-hPrkgHVm` |
+| 4 | 100 | 0.05 s | 0.01 s | 100/100 (100%) | 100/100 (100%) | `benchmark-lVAux9Nf` |
 
-The observed run used `bash scripts/benchmark.sh 20 0.05 0.1` and saved its output under `results/benchmark-35LW8ig9/` on the VCL host. That run printed a trailing shell syntax error after the detection summary due to duplicated script content. The duplicate tail was subsequently removed in commit `ad82c37`; **a clean rerun after that fix has not yet been confirmed**.
+These are user-reported terminal results from individual VCL runs, not averages. The first clean run used `benchmark-FWQxdoXr`, superseding an earlier trial that printed a shell error after its summary. Requested sleep duration and polling interval are not exact measured timings. Trial 4 shows that faster polling can recover short-lived processes in this workload; it does **not** establish the CPU/memory cost. Some pasted outputs were truncated at the final note, but all displayed detection counts.
 
-**Additional observed trial (November 8, 2026):** Running `bash scripts/benchmark.sh 100 0.05 0.1` produced 42/100 (42.0%) snapshot detections and 100/100 (100.0%) eBPF detections. The VCL host saved output under `results/benchmark-dpLxymCR/`. The terminal output shared for this run ended with a truncated note, so a complete clean exit was not independently confirmed.\n\nThese figures describe **one preliminary trial**, not a statistically supported general performance claim. Requested sleep duration and snapshot interval are not exact measured timings. CPU and memory overhead are **not yet measured**.
+**Next phase — resource overhead:** Measure CPU time and peak RSS for each monitor with comparable workloads, multiple trials, and explicit test duration. GNU `/usr/bin/time` can report user CPU (`%U`), system CPU (`%S`), elapsed wall time (`%e`), and maximum resident set size in KB (`%M`). When using wrappers such as `sudo`, `timeout`, or a shell, verify which process is actually being measured; wrapper measurements must not be labeled as the monitor's memory usage. Peak RSS is not the same as total memory footprint, and eBPF kernel memory is not fully represented by a userspace loader's RSS. Report sampling workload and output/logging costs separately where possible.
 
 ## Benchmark methodology and limitations
 
@@ -124,8 +125,8 @@ Makefile      snapshot monitor build
 
 1. **Complete:** /proc snapshot with root and /tmp review flags.
 2. **Complete:** structured eBPF ring-buffer execution events, including verified PPID tracking.
-3. **Complete:** initial 20-process detection benchmark; clean-script rerun still needed.
-4. **Next:** repeat controlled trials with multiple process lifetimes and polling intervals.
+3. **Complete:** four successful detection trials covering 20/100 processes, 50/200 ms requested lifetimes, and 10/100 ms requested polling intervals.
+4. **Next:** repeat each configuration to estimate run-to-run variability.
 5. **Next:** implement and record CPU and memory overhead measurements; validate benchmark reliability.
 6. **Next:** finalize build reproducibility, documentation, analysis, and CSC 501 report.
 
