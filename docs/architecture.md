@@ -1,67 +1,66 @@
-# Architecture and Module Responsibilities
+# ProcessWatch Architecture
 
-## Execution environment
-Target: Linux host in NC State VCL, **subject to confirmation**. Xinu running in QEMU is a separate guest OS; do not run Linux `/proc` or eBPF code in the Xinu guest.
+## Scope
 
-## Data flow
+The project implements the original proposal using C on Linux: a `/proc` process snapshot, real-time eBPF exec-event observation, and informational security flags.
+
+## Snapshot path (user space)
+
 ```text
-                       +------------------+
- /proc/<pid>/status --->| src/process.c    |---> process record
- /proc/<pid>/exe    --->| snapshot parser  |       |
-                       +------------------+       v
-                                             src/security.c
-                                              root? /tmp?
-                                                   |
-                                                   v
-                                               src/main.c
-                                              CLI / summary
- Linux sched_process_exec --> ebpf/process_exec.bpf.c
-                                      |
-                                  event buffer
-                                      |
-                                ebpf/loader.c
-                                      |
-                                  event counts
-                                      |
-                          scripts/benchmark.sh --> results/
+/proc/<pid>/status ─┐
+                    ├─> src/process.c ─> ProcessInfo ─> src/security.c
+/proc/<pid>/exe ────┘                                  │
+                                                       v
+                                          build/processwatch snapshot
 ```
 
-## Proposed C record (design only)
-- pid (process ID), ppid (parent ID)
-- name, state
-- uid and `is_root = (uid == 0)`
-- resident memory in kB (VmRSS, if present)
-- executable path (if readable)
-- flag for executable under `/tmp/` (path boundary matters)
-- validity indicators for missing fields
+`src/process.c` enumerates numeric directories under `/proc`, reads process name, PID, PPID, state, UID, and optional RSS, and attempts to resolve the executable symlink. A process can exit during scanning, or the executable symlink may be inaccessible; these conditions are handled without declaring the process malicious.
 
-## Module responsibilities
-- `src/main.c`: parse CLI options, select snapshot mode, print table and flags; eventual integration with event mode.
-- `src/process.c`: enumerate numeric PID dirs, parse status safely, read executable symlink, handle ESRCH/EACCES.
-- `include/process.h`: process struct and snapshot interface.
-- `src/security.c`: review-only heuristics; do not label a process malicious solely due to UID or path.
-- `include/security.h`: flags and evaluation interface.
-- `ebpf/process_exec.bpf.c`: optional kernel-side exec tracepoint hook, minimal event payload.
-- `ebpf/loader.c`: optional user-space libbpf setup, attach, poll event buffer and clean up.
-- `tests/`: parsing tests, synthetic execution workload.
-- `scripts/benchmark.sh`: repeat trials and record machine-readable metrics.
+`src/security.c` flags UID 0 as `ROOT` and executable paths beginning with `/tmp/` as `TMP_EXEC`. These are informational indicators, not evidence of compromise. The `/tmp/` boundary avoids incorrectly flagging `/tmpfile`.
 
-## Planned CLI (not implemented)
+## Real-time execution path (kernel to user space)
+
 ```text
-./processwatch snapshot
-./processwatch snapshot --show-flags
-./processwatch events
+Linux sched_process_exec tracepoint
+              |
+              v
+ebpf/process_exec.bpf.c  [kernel eBPF program]
+              |
+              v
+         BPF ring buffer
+              |
+              v
+ebpf/loader.c            [user-space libbpf]
+              |
+              v
+     EXEC PID/PPID/UID/COMM/TIME output
 ```
-Actual commands may change during implementation.
 
-## Edge cases to design for
-- Processes exit between enumeration and reading.
-- PID reuse; PID alone is not a stable event identifier.
-- Spaces and parentheses in process names; prefer `status` parsing for fields.
-- Unreadable `exe` links; deleted binaries; kernel threads.
-- `VmRSS` may be absent, approximate, or change during scan.
-- Permissions, eBPF verifier constraints, kernel-version differences.
-- Lost events in buffers under high workload.
+The eBPF program sends execution event metadata through a ring buffer. The user-space loader attaches to the tracepoint and polls the buffer using libbpf. The timestamp is a monotonic kernel timestamp in nanoseconds, not a wall-clock date.
 
-## Security boundaries
-Read-only observation; no process termination or privilege escalation. Only test controlled workloads with permission on VCL.
+## Command-line interface
+
+Two executable entry points are currently used:
+
+```bash
+./build/processwatch snapshot
+sudo ./build/processwatch-loader
+```
+
+Both are command-line programs. The event monitor is separate because it requires libbpf and privileges to attach the kernel tracepoint; the snapshot mode does not.
+
+## Testing
+
+- `make test`: C unit checks for `/proc` reading and security rules
+- `tests/workload.sh`: controlled short-lived executable launches
+- `scripts/benchmark.sh`: one paired observation trial with raw logs
+- `scripts/run_trials.sh`: repeated trials with detection-rate CSV
+
+## Limitations
+
+- Snapshots can miss short-lived processes between scans.
+- Process metadata may change while `/proc` is read.
+- PID-only matching is imperfect if PIDs are reused.
+- Ring-buffer delivery may drop events under pressure; the current program does not report dropped-event counts.
+- Root privilege and `/tmp` location alone do not establish malicious activity.
+- CPU and memory overhead are not measured by the current benchmark scripts.
