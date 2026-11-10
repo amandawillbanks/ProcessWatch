@@ -142,7 +142,7 @@ void list_processes(void)
     }
     printf("%-8s %-8s %-8s %-6s %-12s %-25s %s\n",
         "PID", "PPID", "UID",
-        "STATE", "RSS(KB)", "NAME", "FLAGS");
+        "STATE", "RSS(KB)", "NAME", "FLAGS", "EXECUTABLE");
 
     printf("------------------------------------------------"
            "----------------\n");
@@ -192,7 +192,8 @@ void list_processes(void)
                 info.state,
                 info.rss_kb,
                 info.name,
-                flags);
+                flags,
+                info.exe_path_valid ? info.exe_path : "[unavailable]");
         }
     }
 
