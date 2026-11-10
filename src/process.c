@@ -140,7 +140,7 @@ void list_processes(void)
         perror("Unable to open /proc");
         return;
     }
-    printf("%-8s %-8s %-8s %-6s %-12s %-25s %s\n",
+    printf("%-8s %-8s %-8s %-6s %-12s %-25s %-16s %s\n",
         "PID", "PPID", "UID",
         "STATE", "RSS(KB)", "NAME", "FLAGS", "EXECUTABLE");
 
@@ -185,7 +185,7 @@ void list_processes(void)
             }
 
 
-            printf("%-8ld %-8ld %-8lu %-6c %-12lu %-25s %s\n",
+            printf("%-8ld %-8ld %-8lu %-6c %-12lu %-25s %-16s %s\n",
                 (long)info.pid,
                 (long)info.ppid,
                 (unsigned long)info.uid,
