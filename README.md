@@ -2,7 +2,7 @@
 
 **CSC 501 — Operating Systems | NC State University | Fall 2026**
 
-**Status:** Core Linux `/proc` snapshot monitor, security flags, eBPF execution-event monitor, and four successful detection benchmark trials completed. Repeated experiments, CPU/memory overhead measurements, and final report remain outstanding.
+**Status:** Core implementation and recorded experiments completed. Final report prepared November 17, 2026. Results are documented observations, not newly rerun tests.
 
 ## Overview
 
@@ -46,7 +46,7 @@ gcc -Wall -Wextra -O2 -Iebpf \
   ebpf/loader.c -o build/processwatch-loader -lbpf -lelf -lz
 ```
 
-The Makefile currently builds only `build/processwatch`. The eBPF compilation steps remain manual. The generated `ebpf/vmlinux.h` is machine/kernel-specific; regenerate it as appropriate for the target environment. **`make clean` removes the entire `build/` directory**, including manually built eBPF binaries.
+The default `make` target builds `build/processwatch`; `make ebpf` builds the BPF object and userspace loader, generating `ebpf/vmlinux.h` from host BTF as needed. The generated `ebpf/vmlinux.h` is machine/kernel-specific; regenerate it as appropriate for the target environment. **`make clean` removes the entire `build/` directory**, including manually built eBPF binaries.
 
 ## Run
 
@@ -121,14 +121,14 @@ docs/         proposal, architecture, evaluation plan, report drafts
 Makefile      snapshot monitor build
 ```
 
-## Progress and next steps
+## Implementation status and possible future work
 
 1. **Complete:** /proc snapshot with root and /tmp review flags.
 2. **Complete:** structured eBPF ring-buffer execution events, including verified PPID tracking.
 3. **Complete:** four successful detection trials covering 20/100 processes, 50/200 ms requested lifetimes, and 10/100 ms requested polling intervals.
-4. **Next:** repeat each configuration to estimate run-to-run variability.
-5. **Next:** implement and record CPU and memory overhead measurements; validate benchmark reliability.
-6. **Next:** finalize build reproducibility, documentation, analysis, and CSC 501 report.
+4. **Recorded:** separate idle-monitoring CPU-time and RSS observations; these are not matched active-workload overhead experiments.
+5. **Future work:** repeated matched trials, event-loss accounting, and a unified CLI. These are not required to describe the existing implementation.
+6. **Documentation:** completed final technical report is in [docs/final_report.md](docs/final_report.md).
 
 ## Course deliverables
 
@@ -139,6 +139,6 @@ Makefile      snapshot monitor build
 
 ## AI assistance disclosure
 
-AI was used to assist with C/eBPF implementation, Bash benchmark scripts, debugging, and README drafting. The student should review, test, and understand all code and report statements. The final report should disclose actual AI assistance in accordance with course requirements.
+ChatGPT was used as a supplementary tool during the development and documentation of this project. The final report contains the author's disclosure. Consult the instructor's assignment-specific requirements.
 
 Additional documents: [proposal](docs/proposal.md), [architecture](docs/architecture.md), [evaluation plan](docs/evaluation_plan.md), [milestones](docs/milestones.md).
