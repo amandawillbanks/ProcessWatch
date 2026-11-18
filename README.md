@@ -2,7 +2,7 @@
 
 **CSC 501 : Operating Systems | NC State University | Fall 2026**
 
-**Status:** Core implementation and recorded experiments completed. Final report prepared November 17, 2026. Results are documented observations, not newly rerun tests.
+**Status:** Unified CLI changes prepared November 18, 2026; not yet rebuilt or benchmarked on NC State VCL. Historical results are not newly rerun tests.
 
 ## Overview
 
@@ -10,7 +10,7 @@ ProcessWatch is a Linux process-monitoring project written primarily in C. It co
 
 **Research question:** How well does event-driven eBPF monitoring capture short-lived process executions compared with periodic `/proc` snapshots, and what monitoring overhead does each approach incur?
 
-The tools are separate executables; they are not yet integrated into a single combined interface.
+The snapshot and eBPF monitor share a single CLI executable (`processwatch snapshot` and `processwatch monitor`). The kernel BPF object remains separate.
 
 ## Implemented features
 
@@ -37,16 +37,11 @@ From the repository root:
 
 ```bash
 make
-sudo bpftool btf dump file /sys/kernel/btf/vmlinux format c > ebpf/vmlinux.h
-mkdir -p build
-clang -O2 -g -target bpf -D__TARGET_ARCH_x86 \
-  -Iebpf -I/usr/include/x86_64-linux-gnu \
-  -c ebpf/process_exec.bpf.c -o build/process_exec.bpf.o
-gcc -Wall -Wextra -O2 -Iebpf \
-  ebpf/loader.c -o build/processwatch-loader -lbpf -lelf -lz
+make ebpf
+make test
 ```
 
-The default `make` target builds `build/processwatch`; `make ebpf` builds the BPF object and userspace loader, generating `ebpf/vmlinux.h` from host BTF as needed. The generated `ebpf/vmlinux.h` is machine/kernel-specific; regenerate it as appropriate for the target environment. **`make clean` removes the entire `build/` directory**, including manually built eBPF binaries.
+The default `make` target builds the unified CLI with libbpf; `make ebpf` builds the BPF object and generates `ebpf/vmlinux.h` from host BTF as needed. The generated `ebpf/vmlinux.h` is machine/kernel-specific; regenerate it as appropriate for the target environment. **`make clean` removes the entire `build/` directory**, including manually built eBPF binaries.
 
 ## Run
 
@@ -61,7 +56,7 @@ Output columns: `PID PPID UID STATE RSS(KB) NAME FLAGS`. Processes that exit dur
 ### Live eBPF execution monitoring
 
 ```bash
-sudo ./build/processwatch-loader
+sudo ./build/processwatch monitor
 ```
 
 In another terminal, launch a process such as `/bin/sleep 2`. The loader displays entries similar to:
@@ -127,7 +122,7 @@ Makefile      snapshot monitor build
 2. **Complete:** structured eBPF ring-buffer execution events, including verified PPID tracking.
 3. **Complete:** four successful detection trials covering 20/100 processes, 50/200 ms requested lifetimes, and 10/100 ms requested polling intervals.
 4. **Recorded:** separate idle-monitoring CPU-time and RSS observations; these are not matched active-workload overhead experiments.
-5. **Future work:** repeated matched trials, event-loss accounting, and a unified CLI. These are not required to describe the existing implementation.
+5. **Future work:** repeated matched trials and event-loss accounting. The CLI is now unified.
 6. **Documentation:** completed final technical report is in [docs/final_report.md](docs/final_report.md).
 
 ## Course deliverables
