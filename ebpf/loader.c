@@ -40,7 +40,7 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
 }
 
 
-int main(void)
+int run_ebpf_monitor(void)
 {
     struct bpf_object *obj;
     struct bpf_program *prog;
