@@ -153,6 +153,6 @@ These are **requested** sleep durations and polling delays, not independently me
 The instructor's original instructions request GitHub Classroom. The author reports that Classroom is retired and has already provided this personal repository to the instructor. Keep the instructor's acceptance of this alternative, and record the exact final main-branch commit hash in the PDF report.
 
 **Final repository URL:** https://github.com/amandawillbanks/ProcessWatch (personal repository provided to the instructor because Classroom is retired; confirm instructor acceptance)  
-**Final submitted commit hash:** PENDING — record after final merge and verification
+**Final submitted commit hash: 96b6d732e57c8c9a1a48d6b43686d39b61e77797
 
 The final report includes a contribution table and an AI-use disclosure. No source-code features beyond the original proposal are required to reproduce the documented evaluation.
