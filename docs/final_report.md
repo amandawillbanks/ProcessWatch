@@ -99,17 +99,19 @@ The repeated-trial wrapper `scripts/run_trials.sh` saves counts and percentages 
 
 The committed dataset contains 12 trials: six trials at 50 ms lifetime/100 ms polling, three at 200 ms lifetime/100 ms polling, and three at 50 ms lifetime/10 ms polling.
 
+**Table 1. Detection rates for the three evaluated workload configurations (12 trials).**
+
 | Requested lifetime | Requested polling delay | Trials | Snapshot detections | eBPF detections | Snapshot rate | eBPF rate |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
 | 50 ms | 100 ms | 6 | 251/600 | 600/600 | 41.83% | 100% |
 | 200 ms | 100 ms | 3 | 300/300 | 300/300 | 100% | 100% |
 | 50 ms | 10 ms | 3 | 300/300 | 300/300 | 100% | 100% |
 
-**Table reproduction:** The raw data are in `results/detection_trials.csv`. Group the rows by requested lifetime and polling delay, sum the expected and detected counts, and compute `100 × detected / expected`. For example, the six 50 ms/100 ms trials detected 41, 42, 42, 42, 41, and 43 workload PIDs in snapshots: `251 / 600 × 100 = 41.83%`. The corresponding eBPF counts were 100 in every trial. The individual `result_directory` paths point to the raw event logs, snapshot PID lists, expected PID lists, and run summaries. The table is presented directly; no chart or plotting script is used.
+**Table 1 reproduction:** Run `python3 scripts/table_results.py` from the repository root. The raw data are in `results/detection_trials.csv`. Group the rows by requested lifetime and polling delay, sum the expected and detected counts, and compute `100 × detected / expected`. For example, the six 50 ms/100 ms trials detected 41, 42, 42, 42, 41, and 43 workload PIDs in snapshots: `251 / 600 × 100 = 41.83%`. The corresponding eBPF counts were 100 in every trial. The individual `result_directory` paths point to the raw event logs, snapshot PID lists, expected PID lists, and run summaries. The table is generated from the committed CSV by a Python standard-library script; no plotted figures are included.
 
 ### 4.3 Interpretation
 
-For short-lived processes at a requested 100 ms snapshot delay, the periodic snapshot monitor missed many workload PIDs. A process can execute and exit between snapshots, making it invisible to a point-in-time scan. The eBPF collector matched all expected workload PIDs in those six trials because it observes execution events rather than depending on the process still existing at a later snapshot.
+As shown in Table 1, for short-lived processes at a requested 100 ms snapshot delay, the periodic snapshot monitor missed many workload PIDs. A process can execute and exit between snapshots, making it invisible to a point-in-time scan. The eBPF collector matched all expected workload PIDs in those six trials because it observes execution events rather than depending on the process still existing at a later snapshot.
 
 Two controlled changes improved snapshot detection. Extending requested lifetime to 200 ms gave the snapshot collector more opportunity to observe each process. Reducing requested polling delay to 10 ms likewise increased observation opportunities for 50 ms processes. Under both configurations, snapshot and eBPF monitoring matched all expected PIDs in three trials each. These results illustrate a trade-off in observation strategy; they do not establish that the two mechanisms are identical or that either is infallible.
 
@@ -129,14 +131,13 @@ Potential future work, beyond the original required scope, could include CPU uti
 | --- | --- |
 | Amanda Willbanks | Project proposal and scope; C process snapshot and security checks; eBPF/libbpf monitoring; VCL compilation and functional testing; workload experiments and interpretation; repository and report review. |
 
+## Submission and reproducibility
+
+**Repository URL:** https://github.com/amandawillbanks/ProcessWatch (personal repository supplied to instructor because GitHub Classroom is retired; instructor acceptance should be retained).  
+**Exact final main-branch commit hash:** PENDING — insert after final merge and verification.
+
+The repository should contain source code, build/test instructions, experiment scripts, `results/detection_trials.csv`, and the benchmark directories referenced by the CSV. See `README.md` for installation, run commands, and table reproduction. Convert this manuscript to the required PDF and include the final repository URL and exact commit hash before submission.
+
 ## AI-use disclosure
 
 ChatGPT (OpenAI) assisted with code drafting, debugging suggestions, benchmark scripting, README and report drafting, and review of implementation and experimental output. The project author ran the program and experiments on the NC State VCL environment, inspected the outputs, and is responsible for verifying the submitted work. AI assistance is disclosed rather than presented as independent human-only authorship.
-
-## Submission and reproducibility
-
-**Required final repository:** GitHub Classroom repository for the CSC 501 semester project (not the personal development repository).  
-**Classroom repository URL:** PENDING — insert after repository creation.  
-**Exact final Classroom commit hash:** PENDING — insert after final push.
-
-The repository should contain source code, build/test instructions, experiment scripts, `results/detection_trials.csv`, and the benchmark directories referenced by the CSV. See `README.md` for installation, run commands, and table reproduction. Convert this manuscript to the required PDF and include the final Classroom URL and exact commit hash before submission.
