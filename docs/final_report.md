@@ -134,7 +134,7 @@ Potential future work, beyond the original required scope, could include CPU uti
 ## Submission and reproducibility
 
 **Repository URL:** https://github.com/amandawillbanks/ProcessWatch (personal repository supplied to instructor because GitHub Classroom is retired; instructor acceptance should be retained).  
-**Exact final main-branch commit hash:** PENDING — insert after final merge and verification.
+**Merged implementation and documentation commit hash:** `96b6d732e57c8c9a1a48d6b43686d39b61e77797` (merge of pull request #1). This identifies the reviewed project version; the report-only commit that adds this reference is a later commit.
 
 The repository should contain source code, build/test instructions, experiment scripts, `results/detection_trials.csv`, and the benchmark directories referenced by the CSV. See `README.md` for installation, run commands, and table reproduction. Convert this manuscript to the required PDF and include the final repository URL and exact commit hash before submission.
 
