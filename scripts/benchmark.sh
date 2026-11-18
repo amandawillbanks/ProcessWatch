@@ -53,7 +53,7 @@ sudo -v
 # Start loader as root, but retain the PID of the shell's sudo child.
 # The shell writes its own PID, then exec replaces it with ProcessWatch.
 # This lets us signal only this benchmark's monitor, never another instance.
-sudo sh -c 'echo "$" > "$1"; exec ./build/processwatch monitor' sh "$loader_pid_file" > "$ebpf_file" 2>&1 &
+sudo sh -c 'echo "$$" > "$1"; exec ./build/processwatch monitor' sh "$loader_pid_file" > "$ebpf_file" 2>&1 &
 loader_pid=$!
 sleep 1
 if [[ ! -s "$loader_pid_file" ]] || ! kill -0 "$loader_pid" 2>/dev/null; then
