@@ -1,89 +1,69 @@
 # ProcessWatch: Linux Process Monitoring Using C and eBPF
 
 **Course:** CSC 501 — Operating Systems, NC State University, Fall 2026  
-**Team member:** Amanda Willbanks (individual project)  
-**Submission repository:** Use the GitHub Classroom repository created through the course invitation, **not** this personal development repository.  
-**Status:** Unified CLI changes are awaiting build and benchmark verification on NC State VCL. Historical measurements below have not been rerun.
+**Author:** Amanda Willbanks (individual project)  
+**Language:** C | **Platform:** Linux | **Interfaces:** `/proc`, eBPF, libbpf
 
-## Overview
+## Project overview and scope
 
-ProcessWatch is a C-based Linux process monitor that compares point-in-time process snapshots from `/proc` with event-driven execution monitoring via an eBPF `sched_process_exec` tracepoint. Its goal is to quantify how often periodic polling misses short-lived processes compared with kernel execution events. The snapshot also shows informational `ROOT` and `TMP_EXEC` review flags. These flags do **not** establish malicious activity.
+ProcessWatch is a lightweight Linux command-line process monitor developed for CSC 501. As proposed, it uses the Linux `/proc` filesystem to inspect current processes and an eBPF program attached to `sched_process_exec` to observe new program executions. It also marks processes with UID 0 (`ROOT`) and executable paths under `/tmp/` (`TMP_EXEC`) for informational review. **These flags are not malware verdicts.**
 
-The unified command-line executable provides `snapshot` and `monitor` modes. The monitor loads a separately compiled eBPF object and receives structured events over a libbpf ring buffer.
+The project demonstrates process management, process states, parent-child relationships, Linux system interfaces, and communication from kernel space to a user-space C program. The completed application provides two subcommands in one executable; it is not a continuous combined dashboard.
 
-## Your code: source inventory and provenance
+The original proposal's core phases—`/proc` monitoring, eBPF integration, security checks, and controlled testing/documentation—are implemented. CPU utilization, termination-event monitoring, and other proposed *potential extensions* are not part of the implemented scope. The snapshot additionally reports resident memory (RSS) when available.
 
-This project was developed for CSC 501 rather than forked from an existing application. It uses the Linux kernel's documented `/proc` interface and scheduler tracepoint, plus libbpf, but does **not** modify Linux kernel source.
+## Source code and file inventory
 
-| Path | Role |
+| Path | Purpose |
 | --- | --- |
-| `src/main.c` | Unified CLI entry point: `snapshot` and `monitor` |
-| `src/process.c`, `include/process.h` | Enumerate `/proc`; read process status and executable path |
-| `src/security.c`, `include/security.h` | Informational root UID and temporary executable flags |
-| `ebpf/process_exec.bpf.c` | Kernel-side execution tracepoint and ring-buffer event producer |
-| `ebpf/process_event.h` | Shared event structure |
-| `ebpf/loader.c` | libbpf object loading, tracepoint attachment, event consumption |
-| `tests/test_process.c` | C assertions for `/proc` parsing and security checks |
-| `tests/workload.sh` | Sequential short-lived process workload; records expected PIDs |
-| `scripts/benchmark.sh` | Single synchronized snapshot-versus-eBPF detection trial |
-| `scripts/run_trials.sh` | Repeated trials and CSV export |
-| `Makefile` | Build and test rules |
-| `docs/` | Proposal, architecture, evaluation plan, report drafts |
+| `src/main.c` | Unified `snapshot` and `monitor` command-line entry point |
+| `src/process.c`, `include/process.h` | Enumerate numeric `/proc` directories; read process metadata and executable paths |
+| `src/security.c`, `include/security.h` | Informational `ROOT` and `TMP_EXEC` flags |
+| `ebpf/process_exec.bpf.c` | eBPF program attached to the scheduler's process-execution tracepoint |
+| `ebpf/process_event.h` | Shared kernel/user-space event record |
+| `ebpf/loader.c` | Load/attach BPF object and consume events through libbpf ring buffer |
+| `tests/test_process.c` | Process reader and security flag assertions |
+| `tests/workload.sh` | Sequential `/bin/sleep` executions with known child PIDs |
+| `scripts/benchmark.sh` | One controlled snapshot/eBPF comparison; saves logs and matched PID counts |
+| `scripts/run_trials.sh` | Repeat benchmarks and append results to CSV |
+| `results/detection_trials.csv` | Raw per-trial detection counts, rates, and benchmark directory references |
+| `results/benchmark-*/` | Detailed per-run logs, expected and observed PID sets, and summary |
+| `docs/final_report.md` | Final-report manuscript for PDF preparation |
+| `Makefile` | Build and test targets |
 
-The generated `ebpf/vmlinux.h` is derived from the **running host kernel's** BTF information; it is not hand-authored source and is regenerated during the build. The implementation depends on the host Linux kernel rather than embedding or changing a kernel version.
+The generated `ebpf/vmlinux.h` comes from the host's BTF data and is intentionally not committed. Compiled binaries and object files are also generated locally.
 
-## Dependencies and installation
+## Experimental platform
 
-**Target:** Ubuntu 24.04 LTS, x86_64 Linux, with a BTF-enabled kernel and permissions to load and attach BPF programs. Earlier development notes recorded kernel `6.8.0-147-generic`; confirm the actual kernel used for the final experiments.
+The following configuration was recorded from the NC State Virtual Computing Lab machine used for the November 18, 2026 experiments:
 
-Install prerequisites using these step-by-step commands:
+| Property | Value |
+| --- | --- |
+| Environment | NC State VCL virtual machine |
+| Operating system | Ubuntu 24.04.5 LTS |
+| Kernel | `6.8.0-147-generic` |
+| CPU architecture | x86_64 |
+| Processor | Intel Xeon Processor (Skylake, IBRS) |
+| Virtual CPUs | 4 |
+| Installed RAM | 7.8 GiB |
+| Swap | 2.0 GiB |
+| Virtualization | KVM |
+
+Exact installed compiler and libbpf package versions were not captured with these system specifications. Check versions on the host with `gcc --version`, `clang --version`, `bpftool version`, and `pkg-config --modversion libbpf`.
+
+## Prerequisites and installation
+
+Use an Ubuntu Linux host with `/proc`, BTF at `/sys/kernel/btf/vmlinux`, and permission to load/attach eBPF programs. The eBPF monitor generally needs `sudo` on the VCL VM.
 
 ```bash
 sudo apt update
 sudo apt install -y build-essential pkg-config clang llvm bpftool libbpf-dev libelf-dev zlib1g-dev gawk coreutils procps
+test -r /sys/kernel/btf/vmlinux && echo "Kernel BTF available"
 ```
 
-The project was developed using Clang 18; Ubuntu's available versions of GCC, Make, bpftool and libbpf can be inspected with the commands below. **Exact final dependency versions must be recorded from the VCL machine**, rather than assumed from the package list.
+## Build and test
 
-```bash
-gcc --version | head -n 1
-clang --version | head -n 1
-make --version | head -n 1
-bpftool version
-pkg-config --modversion libbpf
-```
-
-The eBPF build requires `/sys/kernel/btf/vmlinux`. The monitor generally requires `sudo` on the teaching VM. Run both monitors on the **Linux host**, not inside a Xinu guest.
-
-## System used for evaluation
-
-| Property | Recorded / to verify |
-| --- | --- |
-| Platform | NC State Virtual Computing Lab (VCL), virtual machine |
-| Operating system | Ubuntu 24.04 LTS |
-| CPU architecture | x86_64 |
-| Kernel | Previously observed `6.8.0-147-generic`; verify on final test machine |
-| CPU model / vCPU count | **Record after running the commands below** |
-| RAM | **Record after running the commands below** |
-| Hypervisor / VM type | VCL VM; underlying hypervisor not yet documented |
-| Compiler | Clang 18 reported during development; verify final environment |
-
-Capture the final system information:
-
-```bash
-uname -a
-cat /etc/os-release
-lscpu
-free -h
-systemd-detect-virt || true
-test -r /sys/kernel/btf/vmlinux && echo "BTF available"
-```
-
-Copy the relevant CPU, memory, OS, kernel, and VM details into this section **before final submission**.
-
-## Build
-
-From the repository root, after installing dependencies:
+From the repository root:
 
 ```bash
 make clean
@@ -91,91 +71,83 @@ make ebpf
 make test
 ```
 
-`make ebpf` generates `ebpf/vmlinux.h` from the host's BTF data, compiles `build/process_exec.bpf.o`, and builds the unified `build/processwatch` executable linked against libbpf. `make test` runs C assertions and shell syntax checks; it is **not** an end-to-end eBPF integration test. `make clean` removes generated build files and the generated BTF header.
+`make ebpf` generates the BTF-derived header, builds `build/process_exec.bpf.o`, and compiles `build/processwatch` with libbpf. `make test` runs C assertions and shell syntax checks. Successful builds, unit tests, and manual monitoring checks were observed on the VCL host on November 18, 2026. Unit tests do not themselves prove successful kernel tracepoint attachment.
 
-## Run
+## Run ProcessWatch
 
-For a current process snapshot:
+**Current-process snapshot:**
 
 ```bash
 ./build/processwatch snapshot
 ```
 
-The output includes PID, PPID, UID, state, resident memory (KB), name, flags and executable path. Processes that disappear or cannot be read may be skipped; `[unavailable]` means the executable path could not be resolved.
+The snapshot shows PID, PPID, UID, state, RSS (KB), name, flags, and executable path. A process can exit during scanning, and permissions can prevent reading a process or resolving its executable. `[unavailable]` is not a security finding.
 
-For live execution events, from the repository root:
+**Live execution events:**
 
 ```bash
 sudo ./build/processwatch monitor
 ```
 
-In a **second terminal**, run:
+In another terminal:
 
 ```bash
 /bin/sleep 2
 ```
 
-The monitor should display an event resembling:
+The monitor prints records in this format:
 
 ```text
-EXEC PID=1125264 PPID=1117695 UID=510249 COMM=sleep TIME=895041159715633
+EXEC PID=12345 PPID=12000 UID=1000 COMM=sleep TIME=895041159715633
 ```
 
-Values will vary. `TIME` is a monotonic kernel timestamp in nanoseconds, **not** a calendar time. Stop monitoring with Ctrl+C. Each `exec` event is not necessarily a distinct PID.
+The numbers above are illustrative. `TIME` is a monotonic kernel timestamp in nanoseconds, not a wall-clock time. Stop with Ctrl+C. The BPF program captures `sched_process_exec` events and sends records to user space through a ring buffer. Repeated `exec` calls can generate multiple events for the same PID.
 
-## Reproduce the experiments and save raw data
+## Controlled evaluation and reproducibility
 
-**Single detection trial** — 20 sequential processes, requested 50 ms lifetime, 100 ms snapshot delay:
+The workload runs sequential `/bin/sleep` child processes and records their PIDs. The benchmark starts the eBPF monitor, repeatedly runs the snapshot command, and intersects each monitor's observed PID set with the known workload PIDs. A detection rate is `matched workload PIDs / workload PIDs × 100`. Unrelated process activity is excluded from this rate.
 
-```bash
-bash scripts/benchmark.sh 20 0.05 0.1
-```
-
-**Repeated trials** — three repetitions of 100 processes each:
+Reproduce the three evaluated configurations:
 
 ```bash
 bash scripts/run_trials.sh 3 100 0.05 0.1
+bash scripts/run_trials.sh 3 100 0.2 0.1
+bash scripts/run_trials.sh 3 100 0.05 0.01
 ```
 
-The scripts start the eBPF monitor with `sudo`, sample the snapshot command, generate a known-PID workload, and compare matched PIDs. Each single run creates a `results/benchmark-XXXXXXXX/` directory containing `summary.txt`, `ebpf.log`, `workload_pids.txt`, `snapshot_pids.txt` and intermediate sorted PID sets. Repeated runs append rows to `results/detection_trials.csv`.
+Each command appends new trial rows to `results/detection_trials.csv`; it does not replace previous measurements. Existing data include six short-lifetime/slow-polling trials (three earlier and three on November 18), plus three trials for each of the other configurations. Trial numbers restart at 1 for each invocation and are **not globally unique**. Identify a trial using its configuration and `result_directory`.
 
-**Important:** Run `make ebpf` first and verify the monitor works. The scripts have not yet been rerun following the unified CLI update. Requested timing values are not measured exact durations; the scripts do **not** measure CPU/RSS overhead.
+Each benchmark directory contains `summary.txt`, `ebpf.log`, `workload_pids.txt`, `snapshot_pids.txt`, `expected.sorted`, `snapshot.sorted`, `ebpf.sorted`, and a monitor PID file when generated. The committed CSV and detailed logs constitute the underlying data for the table below; no plotted figures are included or required to reproduce this table.
 
-## Figures and tables: reproduction map
+### Recorded detection results (12 trials; 100 executions per trial)
 
-| Report output | Raw input | Generator / procedure | Status |
-| --- | --- | --- | --- |
-| Detection-rate comparison table | `results/detection_trials.csv` | `bash scripts/run_trials.sh 3 100 0.05 0.1` generates CSV; calculate percentages from its rate columns | Trial script exists; new data pending |
-| Per-trial detection counts | `results/benchmark-*/summary.txt` and PID lists | `bash scripts/benchmark.sh 100 0.05 0.1` | Trial script exists; new data pending |
-| Detection-rate figure | `results/detection_trials.csv` | **Plotting script not yet implemented; add and document its command before submission** | Pending |
-| Resource-overhead table or figure | New raw CPU/RSS measurements | **Matched measurement and plotting scripts not yet implemented** | Pending; do not present historical notes as reproducible raw data |
+| Requested lifetime | Requested polling delay | Trials | Snapshot detections (total) | eBPF detections (total) | Mean snapshot rate | Mean eBPF rate |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| 50 ms | 100 ms | 6 | 251 / 600 | 600 / 600 | 41.83% | 100% |
+| 200 ms | 100 ms | 3 | 300 / 300 | 300 / 300 | 100% | 100% |
+| 50 ms | 10 ms | 3 | 300 / 300 | 300 / 300 | 100% | 100% |
 
-The instructor requires **scripts for each plotted figure** and **the raw data used to plot it**. Once benchmarks are run, commit the actual CSV/logs or provide a working location and explicit regeneration instructions if large. Do not claim the historical figures below can be regenerated from files that are not committed.
+**How to regenerate the table:** Read `results/detection_trials.csv`, group rows by `requested_lifetime_s` and `requested_poll_interval_s`, sum `snapshot_detected`, `ebpf_detected`, and `workload_count`, and divide detected totals by workload totals. All trials have 100 expected executions, so the pooled rates equal the means of per-trial rates within each configuration. For example, the 50 ms/100 ms snapshot rate is `251 / 600 × 100 = 41.83%`. Individual per-trial counts and corresponding detailed logs are in the CSV and its `result_directory` entries.
 
-## Previously recorded results (historical, not the new benchmark run)
+These are **requested** sleep durations and polling delays, not independently measured exact process lifetimes or sampling intervals. The benchmark does not measure CPU or memory overhead. In this workload, slower polling missed many short-lived executions; longer lifetimes or faster polling produced full observed coverage. eBPF matched all expected workload PIDs in these trials, but that does not establish lossless event delivery under other conditions.
 
-| Workload | Requested lifetime | Requested polling delay | Snapshot detected | eBPF detected |
-| ---: | ---: | ---: | ---: | ---: |
-| 20 | 50 ms | 100 ms | 8/20 (40%) | 20/20 (100%) |
-| 100 | 50 ms | 100 ms | 42/100 (42%) | 100/100 (100%) |
-| 100 | 200 ms | 100 ms | 100/100 (100%) | 100/100 (100%) |
-| 100 | 50 ms | 10 ms | 100/100 (100%) | 100/100 (100%) |
+## Methodological limitations
 
-These are single user-recorded November 8, 2026 runs, not means or newly reproduced results. Raw logs for those historical runs were not confirmed in GitHub. They show that snapshots can miss short-lived processes when polling is slow, whereas more frequent polling can improve detection. They do **not** establish lossless eBPF delivery or a matched resource-overhead comparison.
+- Snapshot enumeration and `exec` event collection measure different operating-system behaviors.
+- The workload is sequential `sleep` processes, not representative of all real workloads.
+- PID-set matching can be affected by PID reuse and repeated executions.
+- The actual polling cadence and process lifetimes were not independently timed.
+- The BPF implementation does not count dropped ring-buffer events.
+- CPU/RSS overhead was not measured as part of these 12 controlled trials; no comparative overhead conclusion is claimed.
+- The security flags are simple metadata indicators, not a malware detector.
 
-## Methodology, interpretation and limitations
+## Final CSC 501 submission
 
-The workload records expected child PIDs. Snapshot polling enumerates currently visible processes, whereas eBPF captures **execution events** at `sched_process_exec`. Both observed PID sets are intersected with the workload PID set to exclude unrelated processes. A snapshot can miss a process that exits between scans; event-driven monitoring can capture its execution if the monitor is active and the ring buffer delivers the event.
+**Deadline:** December 1, 2026, 11:59 PM. The required submission includes the final report PDF, presentation, and **GitHub Classroom repository**. This personal repository is a development workspace, not the final submission repository.
 
-Limitations include process-lifetime and scheduling variability, different observation semantics, potential PID reuse, lack of eBPF dropped-event accounting, and the absence of matched CPU/memory measurements in the current benchmark. Reported idle CPU/RSS observations are historical and should not be presented as equivalent matched comparisons. Repeated trials and figure scripts are still pending final verification.
+Accept the [course GitHub Classroom invitation](https://classroom50.org/ncsu-csc-501/csc-501-operating-systems/assignments/semester-project/accept), transfer the verified code, tests, CSV, and referenced raw benchmark directories, then record the Classroom repository URL and exact final commit hash in the PDF report.
 
-## Final submission and provenance
+**Classroom repository URL:** PENDING — fill in after Classroom repository creation  
+**Final Classroom commit hash:** PENDING — record after final push
 
-**Deadline:** December 1, 2026, 11:59 PM (report PDF, slides, and Classroom repository). Accept the [GitHub Classroom invitation](https://classroom50.org/ncsu-csc-501/csc-501-operating-systems/assignments/semester-project/accept), transfer the validated project into that Classroom repository, and push all source, experiment scripts, raw data and figure scripts before the deadline.
-
-**Classroom repository URL:** TO BE FILLED IN  
-**Final graded commit hash:** TO BE FILLED IN AFTER FINAL PUSH
-
-Put the **Classroom repository URL and exact final commit hash** in the PDF report. Include a contribution table (one row for the individual author) and an AI-use statement naming ChatGPT and its use for code drafting, debugging, scripts, review and documentation, with all work understood and verified by the author.
-
-See `docs/final_report.md` for the existing draft report. That draft still describes the old separate-executable architecture and must be updated before submission.
+The final report includes a contribution table and an AI-use disclosure. No source-code features beyond the original proposal are required to reproduce the documented evaluation.
