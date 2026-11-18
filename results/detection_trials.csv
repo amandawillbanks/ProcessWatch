@@ -1,0 +1,7 @@
+trial,workload_count,requested_lifetime_s,requested_poll_interval_s,snapshot_detected,ebpf_detected,snapshot_rate_percent,ebpf_rate_percent,result_directory
+1,100,0.05,0.1,41,100,41.00,100.00,results/benchmark-GIDSFzbv,
+2,100,0.05,0.1,42,100,42.00,100.00,results/benchmark-TafoOKy5,
+3,100,0.05,0.1,42,100,42.00,100.00,results/benchmark-HZnEB4d4,
+1,100,0.05,0.1,42,100,42.00,100.00,results/benchmark-4o33UoTA,
+2,100,0.05,0.1,41,100,41.00,100.00,results/benchmark-iE0QN9fi,
+3,100,0.05,0.1,43,100,43.00,100.00,results/benchmark-yOI0ORWZ,
