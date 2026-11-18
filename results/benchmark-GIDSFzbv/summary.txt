@@ -1,0 +1,10 @@
+ProcessWatch benchmark
+Workload executions: 100
+Requested process lifetime (seconds): 0.05
+Requested snapshot interval (seconds): 0.1
+Snapshot detections: 41 / 100
+eBPF detections: 100 / 100
+Snapshot detection rate: 41.0%
+eBPF detection rate: 100.0%
+Note: detection rates are for this workload and trial only.
+Note: this script does not measure CPU or memory overhead.
