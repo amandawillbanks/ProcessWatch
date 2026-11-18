@@ -1,22 +1,33 @@
-
 #include <stdio.h>
 #include <string.h>
-
 #include "process.h"
+
+int run_ebpf_monitor(void);
+
+static void usage(const char *program)
+{
+    fprintf(stderr, "ProcessWatch - Linux Process Monitor\n");
+    fprintf(stderr, "Usage: %s <snapshot|monitor>\n", program);
+    fprintf(stderr, "  snapshot  Show processes from /proc\n");
+    fprintf(stderr, "  monitor   Stream process exec events via eBPF (requires root and make ebpf)\n");
+}
 
 int main(int argc, char *argv[])
 {
-    if (argc != 2 ||
-        strcmp(argv[1], "snapshot") != 0) {
-
-        printf("ProcessWatch - Linux Process Monitor\n");
-        printf("Usage: %s snapshot\n", argv[0]);
+    if (argc != 2) {
+        usage(argv[0]);
         return 1;
     }
 
-    printf("\nProcessWatch - Process Snapshot\n\n");
+    if (strcmp(argv[1], "snapshot") == 0) {
+        printf("\nProcessWatch - Process Snapshot\n\n");
+        list_processes();
+        return 0;
+    }
 
-    list_processes();
+    if (strcmp(argv[1], "monitor") == 0)
+        return run_ebpf_monitor();
 
-    return 0;
+    usage(argv[0]);
+    return 1;
 }
