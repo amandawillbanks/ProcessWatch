@@ -33,7 +33,7 @@ for (( trial=1; trial<=trials; trial++ )); do
         echo "Could not parse detection counts from $summary" >&2; exit 1;
     }
     rates=$(awk -v s="$snapshot" -v b="$ebpf" -v n="$expected" 'BEGIN {printf "%.2f,%.2f", 100*s/n, 100*b/n}')
-    printf '%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
+    printf '%s,%s,%s,%s,%s,%s,%s,%s\n' \
         "$trial" "$expected" "$duration" "$interval" "$snapshot" "$ebpf" "$rates" "$dir" >> "$csv"
 done
 echo "Trial data saved to $csv"

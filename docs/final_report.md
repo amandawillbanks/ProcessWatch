@@ -1,111 +1,143 @@
 # ProcessWatch: Linux Process Monitoring Using C and eBPF
 
-**CSC 501: Operating Systems | NC State University | Fall 2026**  
-**Individual project | Report prepared November 17, 2026**
+**CSC 501 — Operating Systems | North Carolina State University | Fall 2026**  
+**Author:** Amanda Willbanks | **Individual project**  
+**Report status:** Final manuscript for PDF formatting; Classroom repository URL and final commit hash remain to be filled in after submission repository creation.
 
 ## Abstract
 
-ProcessWatch is a Linux process monitoring project that compares periodic snapshots of the proc filesystem with execution-event monitoring through extended Berkeley Packet Filter (eBPF). The implementation consists of a C program that enumerates processes and reports metadata, a kernel eBPF tracepoint program that captures process executions, a libbpf user-space loader, and informational security review indicators. Controlled workloads generated known process identifiers to compare detection coverage. In four recorded configurations, eBPF matched all 20 or 100 workload PIDs; snapshots detected 8 of 20 and 42 of 100 processes when requested process lifetime was 50 ms and snapshot delay was 100 ms, but detected all 100 processes when either lifetime increased to 200 ms or polling delay decreased to 10 ms. Separate idle-monitoring measurements demonstrate that more frequent polling used more CPU time. These observations illustrate monitoring trade-offs but are not a matched, repeated full-system performance comparison.
+ProcessWatch is a lightweight Linux process-monitoring application written in C. In accordance with the project proposal, it combines point-in-time process information from the Linux `/proc` filesystem with real-time execution-event monitoring using eBPF and libbpf. It also provides informational flags for processes with root privileges and executables located under `/tmp/`. A controlled evaluation compared periodic snapshots against eBPF events using known-PID workloads. Across 12 trials containing 1,200 total process executions, snapshot monitoring detected 251 of 600 short-lived processes (41.83%) at a requested 100 ms polling delay, while eBPF detected 600 of 600. When processes remained alive for a requested 200 ms, or polling delay was reduced to 10 ms, both approaches matched all 300 expected PIDs in each configuration. These results demonstrate the sampling limitations of periodic monitoring under the tested conditions without implying that eBPF delivery is universally lossless.
 
-## 1. Motivation and Research Question
+## 1. Introduction and objectives
 
-Linux exposes information about currently running processes through the proc filesystem. A program can enumerate numeric directories under `/proc` and read files such as `/proc/<pid>/status` to obtain process identity, ownership, state, and memory information. This approach is accessible and does not require kernel instrumentation, but each snapshot only observes processes that still exist when they are scanned. Short-lived programs may begin and exit between snapshots.
+Linux provides different interfaces for observing processes. The `/proc` filesystem exposes information about processes currently present, while kernel tracepoints can notify instrumentation programs about specific events. The ProcessWatch project was proposed to explore both approaches in one C application and connect classroom topics to a functioning Linux system.
 
-An event-driven alternative is to attach an eBPF program to a kernel tracepoint. Rather than repeatedly scanning the process table, the program receives notifications when an execution event occurs. ProcessWatch explores the following question: **How well does eBPF execution-event monitoring capture short-lived program executions compared with periodic proc snapshots, and what resource-use trade-offs are visible in the recorded observations?** This is an educational comparison of distinct observation mechanisms, not a general malware detection or production security product.
+The original project objectives were to (1) build a C process monitor; (2) retrieve active-process information from `/proc`; (3) detect process execution through eBPF; (4) identify UID 0 processes; (5) inspect executable locations and flag paths under `/tmp`; and (6) demonstrate communication from a kernel-level eBPF program to user space. The completed implementation addresses these objectives. Optional extensions such as CPU utilization and process termination tracing were not part of the required implementation.
 
-## 2. Technical Design and Implementation
+## 2. System design and implementation
 
-### 2.1 Environment and architecture
+### 2.1 Architecture and command-line interface
 
-The project was developed on an NC State VCL Ubuntu 24.04 LTS x86_64 Linux environment. The README previously recorded kernel version 6.8.0-147-generic, with GCC, Make, Clang 18, bpftool, and libbpf used for development. The exact environment of every individual experiment was not independently archived in the GitHub results directory. The snapshot executable and the eBPF loader are separate command-line tools; the latter requires a compatible host kernel, BTF information, and sufficient permissions to load and attach BPF programs. Neither tool runs inside a Xinu guest.
-
-### 2.2 Process snapshot collector
-
-The snapshot implementation is in `src/process.c`, with its command-line entry point in `src/main.c`. Invoking `./build/processwatch snapshot` opens `/proc`, filters directory names to numeric PIDs, and reads each process's `status` file. The reader extracts process name, parent PID, UID, state, and resident memory in kilobytes when available. It also attempts to resolve `/proc/<pid>/exe` to an executable path. The output includes PID, PPID, UID, state, RSS, name, security flags, and executable path.
-
-A process may terminate while enumeration is in progress, and access to some proc entries may be restricted. The implementation skips unreadable processes and marks unavailable executable paths rather than assuming the missing data indicates a threat. A zero RSS display can also indicate that the VmRSS field was unavailable.
-
-### 2.3 Event-driven eBPF collector
-
-The kernel component in `ebpf/process_exec.bpf.c` attaches to the `sched_process_exec` tracepoint. For each observed execution it obtains the PID, parent PID, UID, command name, and a monotonic kernel timestamp in nanoseconds. A BPF ring buffer transports the structured `process_event` record to user space. The libbpf loader in `ebpf/loader.c` opens and loads the compiled BPF object, attaches the tracepoint program, polls the ring buffer, and prints event records.
-
-This event stream describes execution activity, whereas a proc snapshot describes processes present at a particular time. An `exec` operation replaces the executable image without changing the PID, so a PID may appear in more than one execution event. The event timestamp is not a wall-clock timestamp. The current implementation does not expose a ring-buffer dropped-event counter.
-
-### 2.4 Informational security indicators
-
-`src/security.c` implements two review flags. `ROOT` identifies a process whose UID is zero, and `TMP_EXEC` identifies an executable path beginning with `/tmp/`. These signals provide simple examples of how process metadata may support review. Neither root execution nor execution from a temporary directory proves malicious behavior. A path that cannot be resolved cannot be reliably classified by the temporary-path check.
-
-### 2.5 Build, execution, and tests
-
-On the documented Ubuntu host, required packages include GCC/build-essential, Make, Clang/LLVM, bpftool, libbpf development files, libelf, zlib, and pkg-config. From the repository root:
+ProcessWatch provides two subcommands in the same executable:
 
 ```bash
-make
+./build/processwatch snapshot
+sudo ./build/processwatch monitor
+```
+
+The `snapshot` mode invokes the process enumerator in `src/process.c`. The `monitor` mode invokes the libbpf loader in `ebpf/loader.c`, which loads the compiled eBPF object and streams execution records. These modes share a command-line entry point but collect different types of observations; they are not a simultaneous unified display.
+
+### 2.2 Process information through /proc
+
+The snapshot collector opens `/proc`, identifies numeric process directories, and reads `/proc/<pid>/status`. It extracts the process name, PID, parent PID (PPID), state, UID, and resident memory (`VmRSS`, when available). It also attempts to resolve the `/proc/<pid>/exe` symbolic link to the executable path.
+
+The displayed columns are PID, PPID, UID, state, RSS in KB, name, security flags, and executable path. Processes that terminate during enumeration or cannot be read may be skipped; an executable path that cannot be resolved is displayed as `[unavailable]`. This behavior reflects the changing process table and access restrictions of Linux.
+
+### 2.3 eBPF execution monitoring and kernel-to-user communication
+
+The eBPF source `ebpf/process_exec.bpf.c` attaches to the `sched_process_exec` tracepoint. On an execution event, the BPF program records PID, PPID, UID, command name, and a monotonic nanosecond timestamp. It places the event into a BPF ring buffer. The user-space loader opens and loads the BPF object, attaches the tracepoint, polls the ring buffer through libbpf, and prints each received event.
+
+The event format is `EXEC PID=... PPID=... UID=... COMM=... TIME=...`. The timestamp is monotonic kernel time, not a human-readable calendar time. Execution events are distinct from process creation: an existing PID may execute a different program, and the same PID may generate more than one `exec` event.
+
+### 2.4 Informational security checks
+
+The snapshot applies two flags implemented in `src/security.c`:
+
+| Flag | Rule | Interpretation |
+| --- | --- | --- |
+| `ROOT` | Process UID equals 0 | Indicates root privileges; not inherently suspicious |
+| `TMP_EXEC` | Resolved executable path begins with `/tmp/` | Indicates execution from a temporary directory; requires context |
+
+These checks provide security-relevant process metadata but do not label a process as malicious. If the executable path is unavailable, the `TMP_EXEC` condition cannot be evaluated reliably.
+
+### 2.5 Relationship to CSC 501 concepts
+
+The implementation illustrates process management through PID/PPID relationships and execution behavior; process states through `/proc` metadata; kernel/user-space separation through the BPF program and user-space libbpf loader; operating-system interfaces through procfs and scheduler tracepoints; and basic security observations through UID and executable-path inspection.
+
+## 3. Development and verification
+
+### 3.1 Evaluation environment
+
+The NC State Virtual Computing Lab environment recorded on November 18, 2026 was:
+
+| Component | Configuration |
+| --- | --- |
+| Operating system | Ubuntu 24.04.5 LTS |
+| Kernel | `6.8.0-147-generic` |
+| Processor | Intel Xeon Processor (Skylake, IBRS) |
+| CPU allocation | 4 virtual CPUs, x86_64 |
+| Memory | 7.8 GiB RAM; 2.0 GiB swap |
+| Virtualization | KVM |
+
+Build dependencies include GCC, Make, Clang/LLVM, bpftool, libbpf development libraries, libelf, zlib, and pkg-config. Exact package version numbers were not captured for this report and should not be inferred from the operating-system release.
+
+### 3.2 Build and functional tests
+
+From the repository root:
+
+```bash
+make clean
 make ebpf
 make test
 ./build/processwatch snapshot
-sudo ./build/processwatch-loader
+sudo ./build/processwatch monitor
 ```
 
-The default Make target builds the proc snapshot executable. The `make ebpf` target generates a `vmlinux.h` header from the host's BTF data when necessary and compiles the kernel object and loader. The `make test` target runs C assertions for process reading and security flag behavior and checks shell syntax. The project records prior successful test execution, but this report preparation did not rerun tests on the VCL host.
+`make ebpf` generates the host BTF-derived `vmlinux.h`, compiles the kernel-side BPF object, and builds the unified user-space executable. `make test` executes C assertions covering process reading and security checks and checks shell-script syntax. The build and tests completed successfully on the VCL host on November 18, 2026. Manual checks also confirmed that snapshot mode printed process metadata and monitor mode displayed execution events when test programs were launched.
 
-## 3. Experimental Evaluation
+The test suite is not a substitute for the manual eBPF attachment test because loading kernel programs requires a suitable Linux kernel and permissions.
 
-### 3.1 Workload and detection method
+## 4. Experimental evaluation
 
-The controlled workload script `tests/workload.sh` launches a specified number of sequential `/bin/sleep` child programs and records their PIDs. The benchmark script starts the eBPF loader and a background loop that repeatedly invokes the snapshot executable. It then runs the workload, collects the observed PID sets, and intersects each set with the known workload PID list. Detection rate is calculated as matched workload PIDs divided by expected workload PIDs. Unrelated background processes are excluded from the final counts.
+### 4.1 Methodology
 
-The reported sleep durations and polling intervals are **requested** delays, not independently measured exact process lifetimes or start-to-start snapshot intervals. Matching solely on PID is also imperfect in the presence of PID reuse or repeated execution within one process.
+The controlled workload in `tests/workload.sh` executes sequential `/bin/sleep` processes and records the child PIDs as the expected set. The `scripts/benchmark.sh` script starts the eBPF monitor, repeatedly invokes `./build/processwatch snapshot`, executes the workload, then stops monitoring and calculates how many expected PIDs appeared in each observation stream. The comparison uses intersections of unique observed PIDs with the expected workload PIDs, excluding unrelated background activity.
 
-### 3.2 Recorded detection results
+The repeated-trial wrapper `scripts/run_trials.sh` saves counts and percentages in `results/detection_trials.csv` and references the detailed logs in `results/benchmark-*/`. Requested sleep durations and polling delays are experimental settings; exact timing was not independently instrumented. Each trial includes 100 expected workload executions.
 
-The repository README records the following individual experiments from November 8, 2026:
+### 4.2 Detection results
 
-| Configuration | Workload | Requested lifetime | Requested snapshot delay | Snapshot detected | eBPF detected |
-|---|---:|---:|---:|---:|---:|
-| 1 | 20 | 50 ms | 100 ms | 8/20 (40%) | 20/20 (100%) |
-| 2 | 100 | 50 ms | 100 ms | 42/100 (42%) | 100/100 (100%) |
-| 3 | 100 | 200 ms | 100 ms | 100/100 (100%) | 100/100 (100%) |
-| 4 | 100 | 50 ms | 10 ms | 100/100 (100%) | 100/100 (100%) |
+The committed dataset contains 12 trials: six trials at 50 ms lifetime/100 ms polling, three at 200 ms lifetime/100 ms polling, and three at 50 ms lifetime/10 ms polling.
 
-These four rows are **different individual configurations**, not four repetitions of the same experiment. They should not be combined into a pooled mean or treated as a statistical estimate of reliability. The underlying benchmark directories were referenced in user-reported terminal output but were not present in the GitHub `results/` directory during documentation review. The committed `results/measurements.csv` contains a header only, not a populated measurement dataset.
+**Table 1. Detection rates for the three evaluated workload configurations (12 trials).**
 
-The first two configurations demonstrate a sampling limitation: a requested 100 ms delay allowed many short-lived 50 ms processes to disappear before the snapshot captured them. In configuration 3, longer process lifetime improved snapshot coverage. In configuration 4, shorter requested polling delay improved coverage for the short-lived workload. The event-driven collector matched all expected workload PIDs in these four observations. This does not prove lossless eBPF event delivery under arbitrary load.
+| Requested lifetime | Requested polling delay | Trials | Snapshot detections | eBPF detections | Snapshot rate | eBPF rate |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| 50 ms | 100 ms | 6 | 251/600 | 600/600 | 41.83% | 100% |
+| 200 ms | 100 ms | 3 | 300/300 | 300/300 | 100% | 100% |
+| 50 ms | 10 ms | 3 | 300/300 | 300/300 | 100% | 100% |
 
-### 3.3 Additional active-workload observation
+**Table 1 reproduction:** Run `python3 scripts/table_results.py` from the repository root. The raw data are in `results/detection_trials.csv`. Group the rows by requested lifetime and polling delay, sum the expected and detected counts, and compute `100 × detected / expected`. For example, the six 50 ms/100 ms trials detected 41, 42, 42, 42, 41, and 43 workload PIDs in snapshots: `251 / 600 × 100 = 41.83%`. The corresponding eBPF counts were 100 in every trial. The individual `result_directory` paths point to the raw event logs, snapshot PID lists, expected PID lists, and run summaries. The table is generated from the committed CSV by a Python standard-library script; no plotted figures are included.
 
-The README also records a separate manual eBPF trial in which 89 of 100 workload PIDs matched the log, followed by a synchronized trial in which all 100 matched. The unmatched PIDs in the earlier run were clustered near the end of the workload, consistent with the monitoring window ending too soon. This is a plausible timing explanation, not proof of a specific cause. A total count of 210 logged execution lines in a separate run included unrelated activity and potentially multiple execution events per PID; it must not be interpreted as 210 distinct workload processes.
+### 4.3 Interpretation
 
-### 3.4 Recorded CPU time and memory observations
+As shown in Table 1, for short-lived processes at a requested 100 ms snapshot delay, the periodic snapshot monitor missed many workload PIDs. A process can execute and exit between snapshots, making it invisible to a point-in-time scan. The eBPF collector matched all expected workload PIDs in those six trials because it observes execution events rather than depending on the process still existing at a later snapshot.
 
-The README records separate approximately 15-second **idle-monitoring** measurements using GNU time:
+Two controlled changes improved snapshot detection. Extending requested lifetime to 200 ms gave the snapshot collector more opportunity to observe each process. Reducing requested polling delay to 10 ms likewise increased observation opportunities for 50 ms processes. Under both configurations, snapshot and eBPF monitoring matched all expected PIDs in three trials each. These results illustrate a trade-off in observation strategy; they do not establish that the two mechanisms are identical or that either is infallible.
 
-| Monitoring command | Elapsed time | User CPU | System CPU | Combined CPU | Reported peak RSS |
-|---|---:|---:|---:|---:|---:|
-| Snapshot loop, 10 ms requested sleep | 14.78 s | 1.91 s | 5.01 s | 6.92 s | 3,584 KB |
-| Snapshot loop, 100 ms requested sleep | 14.82 s | 0.32 s | 0.91 s | 1.23 s | 3,584 KB |
-| Timed eBPF loader command | 15.03 s | 0.01 s | 0.03 s | 0.04 s | 35,424 KB |
+### 4.4 Limitations
 
-For the polling loops, combined CPU time divided by elapsed time is approximately 46.8% of one CPU core for the 10 ms delay and 8.3% for the 100 ms delay. The timed eBPF command's corresponding figure is approximately 0.27%. The 10 ms loop completed 796 snapshots in 14.78 seconds, and the 100 ms loop completed 136 snapshots in 14.82 seconds. These counts imply average completed-cycle durations of approximately 18.6 ms and 109.0 ms, respectively, which are not equal to the requested sleep delays.
+The experiments use sequential `sleep` processes rather than a varied production workload. The monitors observe different semantics: `/proc` provides current process state, whereas the eBPF tracepoint reports program execution. Detection is calculated from unique PIDs, which can be affected by PID reuse and multiple executions under one PID. Exact scheduling intervals and process lifetimes were not measured. The BPF implementation does not count dropped ring-buffer events, so 100% detection in these trials is not a general losslessness guarantee. The controlled benchmark did **not** measure CPU utilization or memory overhead, so no quantitative overhead comparison is claimed.
 
-The measurements are **not matched active-workload comparisons**. Polling measurements include shell and subprocess overhead; the timed eBPF measurement includes a timeout wrapper and does not fully account for kernel-side BPF memory. The reported RSS values have different process-accounting boundaries and must not be compared as total memory footprints. The eBPF timeout exit status of 124 was consistent with the intentional time limit and does not independently establish successful startup. A separate one-shot snapshot measurement recorded 0.01 s elapsed and 1,664 KB maximum RSS; its user and system CPU values rounded to 0.00 s and should not be interpreted as zero resource use.
+## 5. Conclusion
 
-### 3.5 Interpretation and limitations
+ProcessWatch achieved the objectives of its CSC 501 proposal: a C-based Linux process monitor, current-process information through `/proc`, real-time execution-event observation using eBPF and libbpf, and informational root-privilege and temporary-executable flags. The controlled evaluation shows how snapshot timing affects detection of short-lived processes, while kernel event monitoring provides a complementary perspective on execution activity. The project demonstrates process management, kernel/user-space communication, and Linux system interfaces through a working command-line application.
 
-The observations support three limited conclusions. First, periodic snapshots can miss short-lived programs when their lifetime is short relative to the sampling cycle. Second, more frequent polling can recover those processes in this workload, at a greater observed CPU-time cost in the idle polling loops. Third, eBPF execution events matched all expected workload PIDs in the four recorded controlled configurations, although this does not establish universal delivery guarantees.
+Potential future work, beyond the original required scope, could include CPU utilization, process termination events, and more detailed resource-overhead evaluation. These are not represented as completed features.
 
-Limitations include single trials for the four listed configurations, a sequential sleep workload rather than diverse production activity, PID-only matching, unmeasured exact sampling cadence, different observation semantics, absent event-loss accounting, and unmatched resource measurement boundaries. A stronger overhead comparison would require repeated synchronized workloads, monitor-specific resource accounting, and kernel memory measurements. No such additional experiments are claimed in this report.
+## Individual contribution
 
-## 4. Conclusion
+| Contributor | Contributions |
+| --- | --- |
+| Amanda Willbanks | Project proposal and scope; C process snapshot and security checks; eBPF/libbpf monitoring; VCL compilation and functional testing; workload experiments and interpretation; repository and report review. |
 
-ProcessWatch demonstrates two complementary Linux monitoring mechanisms. The C snapshot tool exposes process metadata through the proc filesystem and applies simple informational security review indicators. The eBPF program observes process execution at a kernel tracepoint and delivers structured events to a user-space loader through a ring buffer. The recorded detection experiments show why short-lived processes are difficult to capture with slower snapshots, while the faster polling configuration illustrates that snapshot coverage can improve. Separate idle-monitoring measurements suggest that increasing snapshot frequency raises CPU-time consumption, but they do not justify a definitive matched performance ranking between eBPF and polling. Future extensions could include repeated matched trials, dropped-event accounting, and a unified interface; these are not presented as completed features.
+## Submission and reproducibility
 
-## Contribution Table
+**Repository URL:** https://github.com/amandawillbanks/ProcessWatch (personal repository supplied to instructor because GitHub Classroom is retired; instructor acceptance should be retained).  
+**Exact final main-branch commit hash:** PENDING — insert after final merge and verification.
 
-| Contributor | Contribution |
-|---|---|
-| Individual project author | Project concept and scope; C proc snapshot and security indicators; eBPF/libbpf event monitor; controlled workload and benchmark methodology; experimental test execution and interpretation; documentation and final review. |
+The repository should contain source code, build/test instructions, experiment scripts, `results/detection_trials.csv`, and the benchmark directories referenced by the CSV. See `README.md` for installation, run commands, and table reproduction. Convert this manuscript to the required PDF and include the final repository URL and exact commit hash before submission.
 
-## AI Use Statement
+## AI-use disclosure
 
-ChatGPT was used as a supplementary tool during the development and documentation of this project. All experimental testing was conducted by me, and the results presented in this report reflect actual observations and recorded measurements. I reviewed the final work and take responsibility for its accuracy and content.
+ChatGPT (OpenAI) assisted with code drafting, debugging suggestions, benchmark scripting, README and report drafting, and review of implementation and experimental output. The project author ran the program and experiments on the NC State VCL environment, inspected the outputs, and is responsible for verifying the submitted work. AI assistance is disclosed rather than presented as independent human-only authorship.

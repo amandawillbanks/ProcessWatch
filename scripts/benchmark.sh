@@ -15,7 +15,7 @@ awk -v n="$interval" 'BEGIN {exit !(n > 0)}' || { echo "interval must be > 0" >&
 
 cd "$(dirname "$0")/.."
 [[ -x build/processwatch ]] || { echo "Run make first" >&2; exit 1; }
-[[ -x build/processwatch-loader && -f build/process_exec.bpf.o ]] || {
+[[ -f build/process_exec.bpf.o ]] || {
     echo "Compile the eBPF object and loader first (see README)." >&2; exit 1;
 }
 
@@ -28,6 +28,8 @@ summary_file="$run_dir/summary.txt"
 : > "$snapshot_file"
 : > "$ebpf_file"
 loader_pid=""
+loader_process_pid=""
+loader_pid_file="$run_dir/loader.pid"
 sampler_pid=""
 
 cleanup() {
@@ -36,8 +38,10 @@ cleanup() {
         wait "$sampler_pid" 2>/dev/null || true
     fi
     if [[ -n "$loader_pid" ]]; then
-        # sudo may be the parent of the actual loader process.
-        sudo pkill -INT -f '^\./build/processwatch-loader$' 2>/dev/null || true
+        if [[ -s "$loader_pid_file" ]]; then
+            loader_process_pid=$(cat "$loader_pid_file")
+            sudo kill -INT "$loader_process_pid" 2>/dev/null || true
+        fi
         wait "$loader_pid" 2>/dev/null || true
     fi
 }
@@ -47,10 +51,12 @@ echo "Benchmark results: $run_dir"
 echo "Checking sudo permission (needed to attach eBPF)..."
 sudo -v
 # Start loader as root, but retain the PID of the shell's sudo child.
-sudo ./build/processwatch-loader > "$ebpf_file" 2>&1 &
+# The shell writes its own PID, then exec replaces it with ProcessWatch.
+# This lets us signal only this benchmark's monitor, never another instance.
+sudo sh -c 'echo "$$" > "$1"; exec ./build/processwatch monitor' sh "$loader_pid_file" > "$ebpf_file" 2>&1 &
 loader_pid=$!
 sleep 1
-if ! kill -0 "$loader_pid" 2>/dev/null; then
+if [[ ! -s "$loader_pid_file" ]] || ! kill -0 "$loader_pid" 2>/dev/null; then
     echo "eBPF loader failed to start:" >&2
     cat "$ebpf_file" >&2
     exit 1
@@ -74,9 +80,9 @@ kill "$sampler_pid" 2>/dev/null || true
 wait "$sampler_pid" 2>/dev/null || true
 sampler_pid=""
 
-# Stop loader and wait for the ring-buffer output to flush.
-# pkill targets the executable rather than relying on sudo's PID semantics.
-sudo pkill -INT -f '^\./build/processwatch-loader$' 2>/dev/null || true
+# Stop only the monitor started by this benchmark.
+loader_process_pid=$(cat "$loader_pid_file")
+sudo kill -INT "$loader_process_pid" 2>/dev/null || true
 wait "$loader_pid" 2>/dev/null || true
 loader_pid=""
 
